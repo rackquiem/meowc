@@ -1,0 +1,12 @@
+_build/
+build/
+gen/
+out/
+meowc
+*.install
+compile_commands.json
+examples/raytracer/include/rt_config.h
+*~
+\#*\#
+.\#*
+.cache/
