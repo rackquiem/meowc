@@ -1,0 +1,19 @@
+project hello
+
+toolchain {
+  cc      clang
+  cflags  -O2 -Wall -Wextra -std=c17
+}
+
+lib mathx {
+  srcs    src/mathx/*.c
+  include include
+  ldflags -lm
+}
+
+bin hello {
+  srcs    src/main.c
+  include include
+  use     mathx
+  define  GREETING="meow"
+}
