@@ -1,0 +1,137 @@
+project raytracer
+
+# Settable from the command line, for example: meowc -D samples=128 build
+option samples  string 48
+option threads  bool   true
+option with_png bool   true
+option fast     bool   false
+
+set warnings -Wall -Wextra -Wpedantic -Wshadow
+set posix    -D_POSIX_C_SOURCE=200809L
+
+toolchain {
+  cc       cc
+  cxx      c++
+  cflags   ${warnings} ${posix} -std=c17
+  cxxflags ${warnings} -std=c++17
+}
+
+if fast {
+  toolchain {
+    cflags   -O3 -march=native
+    cxxflags -O3 -march=native
+  }
+} else {
+  toolchain {
+    cflags   -O2
+    cxxflags -O2
+  }
+}
+
+# Feature detection runs in written order, so the conditionals below see it.
+check header stdio.h
+check header pthread.h
+check func   sqrt in m
+check func   clock_gettime
+check symbol CLOCK_MONOTONIC in time.h
+check sizeof void*
+check compiles c11_atomics "#include <stdatomic.h>\nint main(void){ atomic_int a = 0; return atomic_load(&a); }"
+
+if threads and have_pthread_h {
+  check func pthread_create in pthread
+}
+
+if with_png {
+  pkg zlib
+}
+
+if not have_zlib {
+  message warn "building without zlib, so renders will be written as PPM"
+}
+
+config_header include/rt_config.h
+
+# Every .scene file becomes a C translation unit and a header.
+rule scenes {
+  inputs      scenes/*.scene
+  outputs     gen/${stem}_scene.c gen/${stem}_scene.h
+  command     tools/scenegen.py ${in} ${out0} ${out1}
+  description ${stem}_scene.c
+}
+
+lib rtmath {
+  srcs    src/math/*.c
+  include include
+  ldflags -lm
+}
+
+lib rtscene {
+  srcs    src/scene/*.c gen/*_scene.c
+  include include gen
+  use     rtmath
+  if have_pthread_create {
+    ldflags -lpthread
+  }
+}
+
+lib rtimage {
+  srcs    src/image/*.c
+  include include
+  use     rtmath
+  if have_zlib {
+    pkg zlib
+  }
+}
+
+# The same sources again as one position independent library.
+shared rt {
+  srcs    src/math/*.c src/scene/*.c src/image/*.c gen/*_scene.c
+  include include gen
+  soname  librt.so.1
+  ldflags -lm
+  install lib
+  if have_zlib {
+    pkg zlib
+  }
+  if have_pthread_create {
+    ldflags -lpthread
+  }
+}
+
+bin render {
+  srcs    src/main.c
+  include include gen
+  use     rtscene rtimage
+  define  RT_DEFAULT_SAMPLES=${samples}
+  define  RT_COMPILER="${cc_id}"
+  install bin
+}
+
+bin rtbench {
+  srcs    src/bench.cpp
+  include include gen
+  use     rtscene
+}
+
+test math_test {
+  srcs    tests/math_test.c
+  include include
+  use     rtmath
+}
+
+test scene_test {
+  srcs    tests/scene_test.c
+  include include gen
+  use     rtscene
+}
+
+test image_test {
+  srcs    tests/image_test.c
+  include include
+  use     rtimage
+}
+
+install headers {
+  files include/rt.h include/rt_scene.h include/rt_image.h
+  to    include
+}
