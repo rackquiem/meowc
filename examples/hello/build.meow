@@ -17,3 +17,9 @@ bin hello {
   use     mathx
   define  GREETING="meow"
 }
+
+test mathx_test {
+  srcs    tests/*.c
+  include include
+  use     mathx
+}
