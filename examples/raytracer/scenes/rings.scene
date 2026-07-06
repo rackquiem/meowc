@@ -1,0 +1,17 @@
+# A ring of alternating metal and diffuse spheres around a central emitter.
+
+camera     0 3.2 8.0   0 0.6 0   30
+background 0.010 0.012 0.020
+
+sphere  0.0 -500.0  0.0  500.0  lambert  0.55 0.55 0.58
+
+sphere  2.60  0.55  0.00   0.55  metal    0.95 0.80 0.45  0.02
+sphere  1.84  0.55  1.84   0.55  lambert  0.85 0.30 0.30
+sphere  0.00  0.55  2.60   0.55  metal    0.85 0.85 0.90  0.10
+sphere -1.84  0.55  1.84   0.55  lambert  0.30 0.75 0.45
+sphere -2.60  0.55  0.00   0.55  metal    0.60 0.70 0.95  0.02
+sphere -1.84  0.55 -1.84   0.55  lambert  0.80 0.55 0.20
+sphere  0.00  0.55 -2.60   0.55  metal    0.90 0.90 0.90  0.00
+sphere  1.84  0.55 -1.84   0.55  lambert  0.45 0.35 0.80
+
+sphere  0.00  1.10  0.00   0.70  light    4.20 3.60 2.60

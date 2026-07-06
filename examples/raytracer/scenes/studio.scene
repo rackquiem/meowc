@@ -1,0 +1,13 @@
+# Three spheres on a ground plane, lit by one emissive sphere overhead.
+
+camera     0 1.4 7.5   0 0.7 0   34
+background 0.020 0.028 0.045
+
+#      centre            radius  material  albedo              fuzz
+sphere  0.0 -500.0  0.0   500.0  lambert   0.62 0.62 0.60
+sphere -2.1  0.75   0.1     0.75 lambert   0.86 0.24 0.22
+sphere  0.0  0.85  -0.3     0.85 metal     0.92 0.88 0.78   0.03
+sphere  2.1  0.70   0.2     0.70 lambert   0.22 0.42 0.86
+sphere  0.6  0.32   1.5     0.32 metal     0.75 0.75 0.80   0.28
+sphere -0.9  0.28   1.7     0.28 lambert   0.90 0.72 0.20
+sphere  0.0  6.20   1.0     3.20 light     3.60 3.40 3.00
