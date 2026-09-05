@@ -1,17 +1,13 @@
-# meowc
+Build tool for C and C++ that derives the build graph and dependencies automatically, without needing Makefiles or generated build files
 
-Build tool for C and C++ that derives the build graph and dependencies
-automatically, without needing Makefiles or generated build files
+![meowc](assets/kitty.gif)
 
-meowc tracks dependencies at the action level and only reruns actions whose
-inputs have changed. Outputs are compared by content so downstream actions are
-skipped when recompilation produces byte identical object files
+meowc tracks dependencies at the action level and only reruns actions whose inputs have changed. Outputs are compared by content so downstream actions are skipped when recompilation produces byte identical object files
 
 ```
 dune build && ln -sf _build/default/bin/meowc.exe meowc
 cd examples/raytracer && ../../meowc build && ../../meowc test
 ```
-
 ## TODO
 
 - Model cross-compilation through target triples, sysroots and per-target toolchain configuration

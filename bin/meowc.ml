@@ -34,15 +34,29 @@ let usage =
       "    --no-color     plain output";
     ]
 
-let cores () =
+let cores_from_cpuinfo () =
   match Fs.read "/proc/cpuinfo" with
-  | exception Sys_error _ -> 4
-  | s ->
-      max 1
-        (List.length
-           (List.filter
-              (fun l -> String.length l >= 9 && String.sub l 0 9 = "processor")
-              (String.split_on_char '\n' s)))
+  | exception Sys_error _ -> None
+  | s -> (
+      match
+        List.length
+          (List.filter
+             (fun l -> String.length l >= 9 && String.sub l 0 9 = "processor")
+             (String.split_on_char '\n' s))
+      with
+      | 0 -> None
+      | n -> Some n)
+
+let cores_from_getconf () =
+  match Exec.capture [| "getconf"; "_NPROCESSORS_ONLN" |] with
+  | 0, out -> int_of_string_opt (String.trim out)
+  | _ -> None
+  | exception _ -> None
+
+let cores () =
+  match cores_from_cpuinfo () with
+  | Some n -> n
+  | None -> ( match cores_from_getconf () with Some n when n > 0 -> n | _ -> 4)
 
 let duration s = if s >= 1.0 then Printf.sprintf "%.2f s" s else Printf.sprintf "%.0f ms" (s *. 1000.0)
 
