@@ -78,11 +78,14 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
         if ok then begin
           incr built;
           state.(v.id) <- Done;
+          List.iter Cache.forget v.outs;
+          (match v.depfile with Some d -> Cache.forget d | None -> ());
           Cache.put cache (List.hd v.outs) (key_of v);
           release v.id
         end
         else begin
           incr failed;
+          List.iter Cache.forget v.outs;
           Cache.drop cache (List.hd v.outs);
           List.iter (fun o -> try Sys.remove o with Sys_error _ -> ()) v.outs;
           skip v.id

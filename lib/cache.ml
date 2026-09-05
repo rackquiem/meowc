@@ -24,7 +24,17 @@ let current c out = Hashtbl.find_opt c.keys out
 let put c out key = Hashtbl.replace c.keys out key
 let drop c out = Hashtbl.remove c.keys out
 
-let digest_file p = match Digest.file p with d -> Some (Digest.to_hex d) | exception Sys_error _ -> None
+let digests : (string, string option) Hashtbl.t = Hashtbl.create 256
+
+let digest_file p =
+  match Hashtbl.find_opt digests p with
+  | Some d -> d
+  | None ->
+      let d = match Digest.file p with d -> Some (Digest.to_hex d) | exception Sys_error _ -> None in
+      Hashtbl.replace digests p d;
+      d
+
+let forget p = Hashtbl.remove digests p
 
 let key ~cmd ~inputs =
   let b = Buffer.create 256 in
