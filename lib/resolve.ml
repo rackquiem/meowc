@@ -2,8 +2,8 @@ open Ast
 open Types
 
 let target_fields =
-  [ "srcs"; "include"; "use"; "cflags"; "cxxflags"; "ldflags"; "define"; "pkg"; "install";
-    "soname"; "args" ]
+  [ "srcs"; "exclude"; "include"; "use"; "cflags"; "cxxflags"; "ldflags"; "define"; "pkg";
+    "install"; "soname"; "args" ]
 
 let rule_fields = [ "inputs"; "outputs"; "use"; "command"; "description" ]
 let install_fields = [ "files"; "to" ]
@@ -138,9 +138,12 @@ let sources_of ~extra ((b : block), base) (t : target) =
   if pats = [] then
     Diag.error ~span:b.nspan ~hint:"add a line like: srcs src/*.c" "%s %s declares no srcs"
       b.kind b.bname;
+  let expand ps = List.concat_map (fun p -> Glob.expand_with ~extra (Eval.under base p)) ps in
+  (* a glob is the natural way to say srcs, and then there is always the one file
+     that has to come back out of it *)
+  let dropped = expand (texts (get b "exclude")) in
   let files =
-    List.concat_map (fun p -> Glob.expand_with ~extra (Eval.under base p)) pats
-    |> List.sort_uniq compare
+    expand pats |> List.filter (fun f -> not (List.mem f dropped)) |> List.sort_uniq compare
   in
   if files = [] then
     Diag.error ~span:b.nspan
