@@ -42,24 +42,30 @@ let subst table s =
   done;
   Buffer.contents b
 
+(* Rules are read in written order, the way checks are, so a later rule can glob
+   what an earlier one produces and a pipeline can be spelled out in stages. *)
 let rules_of blocks =
-  List.concat_map
-    (fun ((b : block), base) ->
-      if b.kind <> "rule" then []
-      else begin
-        check_fields b rule_fields;
-        let inputs = texts (get b "inputs") in
-        let outputs = texts (get b "outputs") in
-        let command = texts (get b "command") in
-        let descr = Option.value (get1 b "description") ~default:("gen " ^ b.bname) in
-        if outputs = [] then Diag.error ~span:b.nspan "rule %s declares no outputs" b.bname;
-        if command = [] then Diag.error ~span:b.nspan "rule %s declares no command" b.bname;
-        let files =
-          List.concat_map (fun p -> Glob.expand (Eval.under base p)) inputs |> List.sort_uniq compare
-        in
-        if files = [] then
-          Diag.error ~span:b.nspan ~hint:"the inputs pattern matched nothing"
-            "rule %s has no inputs" b.bname;
+  let generated = ref [] in
+  let of_block ((b : block), base) =
+    if b.kind <> "rule" then []
+    else begin
+      check_fields b rule_fields;
+      let inputs = texts (get b "inputs") in
+      let outputs = texts (get b "outputs") in
+      let command = texts (get b "command") in
+      let descr = Option.value (get1 b "description") ~default:("gen " ^ b.bname) in
+      if outputs = [] then Diag.error ~span:b.nspan "rule %s declares no outputs" b.bname;
+      if command = [] then Diag.error ~span:b.nspan "rule %s declares no command" b.bname;
+      let files =
+        List.concat_map
+          (fun p -> Glob.expand_with ~extra:!generated (Eval.under base p))
+          inputs
+        |> List.sort_uniq compare
+      in
+      if files = [] then
+        Diag.error ~span:b.nspan ~hint:"the inputs pattern matched nothing"
+          "rule %s has no inputs" b.bname;
+      let rs =
         List.map
           (fun f ->
             let stem = Filename.remove_extension (Filename.basename f) in
@@ -82,8 +88,13 @@ let rules_of blocks =
               rspan = b.nspan;
             })
           files
-      end)
-    blocks
+      in
+      generated := !generated @ List.concat_map (fun r -> r.routs) rs;
+      rs
+    end
+  in
+  (* fold_left, not map: each block must see what the ones before it generated *)
+  List.rev (List.fold_left (fun acc bb -> List.rev_append (of_block bb) acc) [] blocks)
 
 let target_of pkgs ((b : block), base) =
   check_fields b target_fields;
@@ -235,10 +246,10 @@ let project (env : Eval.env) =
     (fun (r : rule) ->
       List.iter
         (fun u ->
-          if find p u = None then
+          if find p u = None && not (Sys.file_exists u) then
             Diag.error ~span:r.rspan
               ~hint:(Suggest.hint u (List.map (fun (x : target) -> x.name) targets))
-              "rule %s uses %S, which is not a target" r.rname u)
+              "rule %s uses %S, which is neither a target nor a file" r.rname u)
         r.ruses)
     p.rules;
   let seen_runs = Hashtbl.create 4 in

@@ -113,8 +113,8 @@ let of_project p =
     (fun r ->
       let cmd = Array.of_list r.rcmd in
       (* a tool the rule runs is an input like any other, so building it first is
-         ordering and rebuilding it is invalidation *)
-      let tools = List.filter_map (fun u -> Option.map (out_of p) (find p u)) r.ruses in
+         ordering and rebuilding it is invalidation; a script is already a file *)
+      let tools = List.map (fun u -> match find p u with Some t -> out_of p t | None -> u) r.ruses in
       add
         (Graph.make ~id:!n ~tag:"gen" ~label:r.rdesc ~cmd ~outs:r.routs ~ins:(r.rin @ tools) ()))
     p.rules;

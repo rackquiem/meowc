@@ -29,9 +29,11 @@ A rule runs because something needs the file it writes, a
 run block runs because you asked for it, so a command that produces nothing has
 somewhere to live
 
-A rule can `use` a target, which is how a generator meowc builds itself gets both
-ordering and invalidation: the tool is an input to the rule like any other file,
-so it is linked before the rule runs and a change to it regenerates what it wrote
+A rule can `use` the tool it runs, whether that is a target meowc builds or a
+script sitting in the tree. Either way the tool becomes an input to the rule, so
+it is built before the rule runs and editing it regenerates what it wrote. Rules
+are read in written order, so a later rule can glob what an earlier one produces
+and a pipeline can be spelled out in stages
 
 ```
 bin tablegen {
