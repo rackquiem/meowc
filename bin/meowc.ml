@@ -1,6 +1,8 @@
 open Meow
 open Types
 
+let version = "0.1.0"
+
 let usage =
   String.concat "\n"
     [
@@ -35,6 +37,7 @@ let usage =
       "    -v             print each command as it finishes";
       "    -q             only print warnings and errors";
       "    --no-color     plain output";
+      "    --version      print the version and exit";
     ]
 
 let cores_from_cpuinfo () =
@@ -120,6 +123,7 @@ let parse_args argv =
     | "-q" :: r -> fl.quiet <- true; go r
     | "--no-color" :: r -> Style.enabled := false; go r
     | ("-h" | "--help") :: _ -> print_endline usage; exit 0
+    | ("-V" | "--version") :: _ -> print_endline ("meowc " ^ version); exit 0
     | (("-f" | "-j" | "-C" | "-D" | "--prefix" | "--target" | "--sysroot") as o) :: [] ->
         Diag.error "%s needs a value" o
     | a :: r when String.length a > 2 && String.sub a 0 2 = "-j" ->
