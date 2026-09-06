@@ -103,10 +103,16 @@ let platform_vars env plat arch =
       ("unix", if plat = "windows" || plat = "bare" || plat = "wasm" then "false" else "true");
     ]
 
+(* A build file that says "cc cc" means the default compiler, not the host one,
+   so the triple prefix still wins over a generic name. Anything more specific,
+   a path or a particular compiler, is what the author asked for and is kept. *)
+let generic name =
+  List.mem (Filename.basename name) [ "cc"; "gcc"; "clang"; "c++"; "g++"; "clang++"; "ar" ]
+
 let derive_cross env explicit =
   let tc = env.tc in
   let t = tc.target in
-  let set k = Hashtbl.mem explicit k in
+  let chosen k current = Hashtbl.mem explicit k && not (generic current) in
   let prefixed n = t ^ "-" ^ n in
   let have_prefixed = Exec.which (prefixed "gcc") || Exec.which (prefixed "cc") in
   let tc =
@@ -115,18 +121,24 @@ let derive_cross env explicit =
       let pick n alt = if Exec.which (prefixed n) then prefixed n else prefixed alt in
       {
         tc with
-        cc = (if set "cc" then tc.cc else pick "gcc" "cc");
-        cxx = (if set "cxx" then tc.cxx else pick "g++" "c++");
-        ar = (if set "ar" then tc.ar else prefixed "ar");
+        cc = (if chosen "cc" tc.cc then tc.cc else pick "gcc" "cc");
+        cxx = (if chosen "cxx" tc.cxx then tc.cxx else pick "g++" "c++");
+        ar = (if chosen "ar" tc.ar then tc.ar else prefixed "ar");
       }
   in
+  (* Whatever compiler we ended up with, it has to be aimed at the triple, or a
+     cross build quietly produces host binaries in a cross directory. *)
+  let targeted =
+    let base = Filename.basename tc.cc and n = String.length t in
+    String.length base > n && String.sub base 0 n = t
+  in
   let xflags =
-    (if have_prefixed then [] else [ "--target=" ^ t ])
+    (if targeted then [] else [ "--target=" ^ t ])
     @ (if tc.sysroot = "" then [] else [ "--sysroot=" ^ tc.sysroot ])
   in
   let tc = { tc with xflags } in
   let tc =
-    if set "builddir" || Filename.basename tc.builddir = t then tc
+    if Hashtbl.mem explicit "builddir" || Filename.basename tc.builddir = t then tc
     else { tc with builddir = Filename.concat tc.builddir t }
   in
   env.tc <- tc;
