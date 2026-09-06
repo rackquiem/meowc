@@ -2,13 +2,17 @@ open Types
 
 let color = function
   | "cc" | "c++" -> "#4c78a8"
+  | "as" -> "#b279a2"
   | "ar" -> "#b279a2"
   | "so" -> "#72b7b2"
   | "ld" -> "#54a24b"
   | "gen" -> "#eeca3b"
   | _ -> "#888888"
 
-let render ?(nodes = true) (b : Build.t) =
+let render ?(nodes = true) ?selected (b : Build.t) =
+  let keep (n : Graph.node) =
+    match selected with None -> true | Some s -> Hashtbl.mem s n.id
+  in
   let buf = Buffer.create 4096 in
   Buffer.add_string buf "digraph meowc {\n";
   Buffer.add_string buf "  rankdir=LR;\n  bgcolor=\"transparent\";\n";
@@ -18,6 +22,7 @@ let render ?(nodes = true) (b : Build.t) =
   if nodes then
     Array.iter
       (fun (n : Graph.node) ->
+        if keep n then
         Buffer.add_string buf
           (Printf.sprintf "  n%d [label=%s, fillcolor=%s];\n" n.id
              (Json.str (n.tag ^ "  " ^ Filename.basename n.label))
@@ -25,7 +30,12 @@ let render ?(nodes = true) (b : Build.t) =
       b.g.Graph.nodes;
   Array.iter
     (fun (n : Graph.node) ->
-      List.iter (fun d -> Buffer.add_string buf (Printf.sprintf "  n%d -> n%d;\n" d n.id)) n.deps)
+      if keep n then
+        List.iter
+          (fun d ->
+            if keep b.g.Graph.nodes.(d) then
+              Buffer.add_string buf (Printf.sprintf "  n%d -> n%d;\n" d n.id))
+          n.deps)
     b.g.Graph.nodes;
   Buffer.add_string buf "}\n";
   Buffer.contents buf

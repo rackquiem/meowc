@@ -14,7 +14,7 @@ let usage =
       "    meowc configure               run the checks and write the config header";
       "    meowc check                   parse and validate, build nothing";
       "    meowc targets                 list every target";
-      "    meowc graph [--dot]           show the dependency graph";
+      "    meowc graph [target...]       show the dependency graph, --dot for graphviz";
       "    meowc explain <file>          say why a file is or is not up to date";
       "    meowc compdb                  write compile_commands.json";
       "    meowc watch [target...]       rebuild whenever an input changes";
@@ -194,7 +194,7 @@ let on_done ~ok ~log (n : Graph.node) =
   if ok then Printf.printf "  %s%s\n" (Build.paint n.tag (Style.pad 8 n.tag)) n.label
   else
     Printf.printf "  %s%s\n%s\n" (Style.red (Style.pad 8 "failed")) n.label
-      (Style.dim ("      " ^ Exec.show n.cmd));
+      (Style.dim ("      " ^ Exec.brief n.cmd));
   if String.trim log <> "" then (print_string log; flush stdout);
   flush stdout
 
@@ -318,7 +318,8 @@ let cmd_test filter =
   let _, r = execute p ~names:(List.map (fun (t : target) -> t.name) chosen) in
   if r.failed > 0 then summarise r (Unix.gettimeofday () -. t0);
   if r.built > 0 then print_newline ();
-  let results = List.map (Testrun.run_one p) chosen in
+  let jobs = if fl.jobs > 0 then fl.jobs else cores () in
+  let results = Testrun.run_all ~jobs p chosen in
   List.iter
     (fun (o : Testrun.outcome) ->
       Printf.printf "  %s%s%s\n"
@@ -377,33 +378,43 @@ let cmd_targets () =
           (Style.plural (List.length p.targets) "target"
           :: (if p.scripts = [] then [] else [ Style.plural (List.length p.scripts) "run block" ]))))
 
-let cmd_graph () =
+let cmd_graph names =
   let p = configure () in
   if fl.targets_only then print_string (Dot.targets_only p)
   else
     let b = Build.of_project p in
-    if fl.dot then print_string (Dot.render b)
+    let selected =
+      match names with [] -> None | _ -> Some (Build.select b (select_targets p names))
+    in
+    let keep i = match selected with None -> true | Some s -> Hashtbl.mem s i in
+    if fl.dot then print_string (Dot.render ?selected b)
     else begin
       banner p;
       let order = Graph.topo b.g in
+      let shown = ref 0 in
       List.iter
         (fun i ->
+          if keep i then begin
+          incr shown;
           let v = b.g.Graph.nodes.(i) in
           Printf.printf "  %s%s\n" (Build.paint v.tag (Style.pad 8 v.tag)) (Style.pad 34 v.label);
           List.iter
             (fun d -> Printf.printf "      %s %s\n" (Style.dim "<-") (Style.dim b.g.Graph.nodes.(d).label))
-            v.deps)
+            v.deps
+          end)
         order;
       Printf.printf "\n  %s\n"
-        (Style.dim (Style.plural (Array.length b.g.Graph.nodes) "action"))
+        (Style.dim (Style.plural !shown "action"))
     end
 
 let cmd_explain = function
   | [] -> Diag.error "explain needs a file path"
-  | path :: _ ->
+  | name :: _ ->
       let p = configure () in
       let b = Build.of_project p in
       banner p;
+      (* a target name stands for whatever it produces *)
+      let path = match find p name with Some t -> Build.out_of p t | None -> name in
       (match Graph.producing b.g path with
       | None ->
           Printf.printf "  %s is not produced by this build\n" (Style.bold path);
@@ -512,7 +523,7 @@ let () =
          Printf.printf "  %s\n" (Style.dim "configured")
      | "check" :: _ -> cmd_check ()
      | "targets" :: _ -> cmd_targets ()
-     | "graph" :: _ -> cmd_graph ()
+     | "graph" :: names -> cmd_graph names
      | "explain" :: rest -> cmd_explain rest
      | "compdb" :: _ -> cmd_compdb ()
      | "watch" :: names -> cmd_watch names

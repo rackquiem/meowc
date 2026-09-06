@@ -5,6 +5,13 @@ let quote s =
 
 let show cmd = String.concat " " (List.map quote (Array.to_list cmd))
 
+(* A failing link can carry ten thousand object paths, and printing them all
+   buries the message the compiler actually wrote. *)
+let brief ?(keep = 20) cmd =
+  let n = Array.length cmd in
+  if n <= keep then show cmd
+  else show (Array.sub cmd 0 keep) ^ Printf.sprintf " … and %d more arguments" (n - keep)
+
 let devnull () = Unix.openfile "/dev/null" [ Unix.O_RDONLY ] 0
 
 let capture cmd =
