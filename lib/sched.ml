@@ -1,4 +1,4 @@
-type result = { built : int; cached : int; failed : int; aborted : int }
+type result = { built : int; cached : int; failed : int; aborted : int; interrupted : bool }
 
 type state = Blocked | Ready | Running | Done | Failed
 
@@ -34,7 +34,8 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
   let running = Hashtbl.create 8 in
   let cancelled = Hashtbl.create 8 in
   let built = ref 0 and cached = ref 0 and failed = ref 0 and aborted_count = ref 0 in
-  let stopping () = !failed > 0 && not keep_going in
+  let interrupted = ref false in
+  let stopping () = !interrupted || (!failed > 0 && not keep_going) in
   let release i =
     List.iter
       (fun j ->
@@ -53,13 +54,25 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
     let tmp = Filename.temp_file "meowc" ".log" in
     let fd = Unix.openfile tmp [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ] 0o600 in
     let nul = Exec.devnull () in
+    flush stdout;
     let pid =
-      match Unix.create_process v.cmd.(0) v.cmd nul fd fd with
+      match Unix.fork () with
+      | 0 ->
+          (try ignore (Unix.setsid ()) with Unix.Unix_error _ -> ());
+          (try
+             Unix.dup2 nul Unix.stdin;
+             Unix.dup2 fd Unix.stdout;
+             Unix.dup2 fd Unix.stderr;
+             Unix.close fd;
+             Unix.close nul;
+             Unix.execvp v.cmd.(0) v.cmd
+           with _ -> ());
+          Unix._exit 127
       | pid -> pid
       | exception Unix.Unix_error (e, _, _) ->
           Unix.close fd;
           Unix.close nul;
-          Diag.error "cannot run %s: %s" v.cmd.(0) (Unix.error_message e)
+          Diag.error "cannot fork for %s: %s" v.cmd.(0) (Unix.error_message e)
     in
     Unix.close fd;
     Unix.close nul;
@@ -71,7 +84,7 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
     Hashtbl.iter
       (fun pid _ ->
         Hashtbl.replace cancelled pid ();
-        try Unix.kill pid Sys.sigterm with Unix.Unix_error _ -> ())
+        try Unix.kill (-pid) Sys.sigterm with Unix.Unix_error _ -> ())
       running
   in
   let discard (v : Graph.node) =
@@ -80,8 +93,16 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
     List.iter (fun o -> try Sys.remove o with Sys_error _ -> ()) v.outs;
     skip v.id
   in
+  let rec wait_child () =
+    match Unix.wait () with
+    | r -> Some r
+    | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait_child ()
+    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> None
+  in
   let reap () =
-    let pid, status = Unix.wait () in
+    match wait_child () with
+    | None -> Hashtbl.reset running
+    | Some (pid, status) -> (
     match Hashtbl.find_opt running pid with
     | None -> ()
     | Some (v, tmp) ->
@@ -111,7 +132,23 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
           on_done ~ok ~log v;
           if verbose then print_endline ("      " ^ Style.dim (Exec.show v.cmd));
           if not keep_going then cancel_running ()
-        end
+        end)
+  in
+  let take_signals () =
+    let handle _ =
+      if not !interrupted then begin
+        interrupted := true;
+        Sys.set_signal Sys.sigint Sys.Signal_default;
+        Sys.set_signal Sys.sigterm Sys.Signal_default;
+        cancel_running ()
+      end
+    in
+    (Sys.signal Sys.sigint (Sys.Signal_handle handle), Sys.signal Sys.sigterm (Sys.Signal_handle handle))
+  in
+  let prev_int, prev_term = take_signals () in
+  let restore_signals () =
+    Sys.set_signal Sys.sigint prev_int;
+    Sys.set_signal Sys.sigterm prev_term
   in
   while (not (Queue.is_empty ready) && not (stopping ())) || Hashtbl.length running > 0 do
     while (not (Queue.is_empty ready)) && Hashtbl.length running < jobs && not (stopping ()) do
@@ -127,4 +164,5 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
     if Hashtbl.length running > 0 then reap ()
     else if Queue.is_empty ready then ()
   done;
-  { built = !built; cached = !cached; failed = !failed; aborted = !aborted_count }
+  restore_signals ();
+  { built = !built; cached = !cached; failed = !failed; aborted = !aborted_count; interrupted = !interrupted }

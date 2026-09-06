@@ -205,7 +205,7 @@ let execute p ~names =
         end)
       order;
     Printf.printf "\n  %s\n" (Style.dim (Printf.sprintf "%d actions, nothing run" !n));
-    (b, { Sched.built = 0; cached = 0; failed = 0; aborted = 0 })
+    (b, { Sched.built = 0; cached = 0; failed = 0; aborted = 0; interrupted = false })
   end
   else begin
     let cache = Cache.load (Filename.concat p.tc.builddir ".meowc-cache") in
@@ -223,7 +223,10 @@ let execute p ~names =
 let summarise (r : Sched.result) elapsed =
   if not fl.quiet && not fl.dry then begin
     let text =
-      if r.failed > 0 then
+      if r.interrupted then
+        Style.yellow "interrupted"
+        ^ (if r.aborted > 0 then Style.dim (Printf.sprintf ", %d cancelled" r.aborted) else "")
+      else if r.failed > 0 then
         Style.red (Style.plural r.failed "action" ^ " failed")
         ^ (if r.aborted > 0 then Style.dim (Printf.sprintf ", %d cancelled" r.aborted) else "")
       else if r.built = 0 then Style.dim "nothing to do"
@@ -233,6 +236,7 @@ let summarise (r : Sched.result) elapsed =
       (if r.built + r.failed + r.aborted = 0 then "" else "\n")
       (Style.pad 48 text) (Style.dim (duration elapsed))
   end;
+  if r.interrupted then exit 130;
   if r.failed > 0 then exit 1
 
 let cmd_build names =
