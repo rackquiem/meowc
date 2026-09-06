@@ -4,6 +4,10 @@ Build tool for C and C++ that derives the build graph and dependencies automatic
 
 meowc tracks dependencies at the action level and only reruns actions whose inputs have changed. Outputs are compared by content so downstream actions are skipped when recompilation produces byte identical object files
 
+Adding a declaration to a header that most of the project includes fans out to fourteen translation units across four targets, and nothing relinks, because a declaration emits no code and the objects come back byte identical
+
+![editing a header](assets/emacs.gif)
+
 ```
 dune build && ln -sf _build/default/bin/meowc.exe meowc
 cd examples/raytracer && ../../meowc build && ../../meowc test

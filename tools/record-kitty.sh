@@ -26,7 +26,11 @@ kitty \
 KITTY_PID=$!
 sleep 3
 
-xdotool search --sync --onlyvisible --class kitty windowactivate >/dev/null 2>&1 || true
+for _ in $(seq 30); do
+    xdotool search --onlyvisible --class kitty >/dev/null 2>&1 && break
+    sleep 1
+done
+xdotool search --onlyvisible --class kitty windowactivate >/dev/null 2>&1 || true
 xdotool type --delay 10 -- 'export PS1="raytracer \$ " PATH='"$WORK"'/bin:$PATH; clear'
 xdotool key Return
 sleep 1
