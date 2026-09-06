@@ -29,6 +29,23 @@ A rule runs because something needs the file it writes, a
 run block runs because you asked for it, so a command that produces nothing has
 somewhere to live
 
+A rule can `use` a target, which is how a generator meowc builds itself gets both
+ordering and invalidation: the tool is an input to the rule like any other file,
+so it is linked before the rule runs and a change to it regenerates what it wrote
+
+```
+bin tablegen {
+  srcs tablegen.c
+}
+
+rule tables {
+  inputs  data/*.txt
+  use     tablegen
+  outputs gen/${stem}.c
+  command ${builddir}/bin/tablegen ${in} ${out}
+}
+```
+
 Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is
 invoked with `--target`. Each triple gets its own build directory and probe

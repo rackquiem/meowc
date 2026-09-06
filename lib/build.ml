@@ -112,8 +112,11 @@ let of_project p =
   List.iter
     (fun r ->
       let cmd = Array.of_list r.rcmd in
+      (* a tool the rule runs is an input like any other, so building it first is
+         ordering and rebuilding it is invalidation *)
+      let tools = List.filter_map (fun u -> Option.map (out_of p) (find p u)) r.ruses in
       add
-        (Graph.make ~id:!n ~tag:"gen" ~label:r.rdesc ~cmd ~outs:r.routs ~ins:r.rin ()))
+        (Graph.make ~id:!n ~tag:"gen" ~label:r.rdesc ~cmd ~outs:r.routs ~ins:(r.rin @ tools) ()))
     p.rules;
   let outputs = Hashtbl.create 16 in
   List.iter

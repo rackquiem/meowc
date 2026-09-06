@@ -24,6 +24,7 @@ type target = {
 type rule = {
   rname : string;
   rin : string list;
+  ruses : string list;
   routs : string list;
   rcmd : string list;
   rdesc : string;

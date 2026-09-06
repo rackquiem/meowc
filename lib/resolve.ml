@@ -5,7 +5,7 @@ let target_fields =
   [ "srcs"; "include"; "use"; "cflags"; "cxxflags"; "ldflags"; "define"; "pkg"; "install";
     "soname"; "args" ]
 
-let rule_fields = [ "inputs"; "outputs"; "command"; "description" ]
+let rule_fields = [ "inputs"; "outputs"; "use"; "command"; "description" ]
 let install_fields = [ "files"; "to" ]
 let script_fields = [ "use"; "command" ]
 
@@ -75,6 +75,7 @@ let rules_of blocks =
             {
               rname = b.bname;
               rin = [ f ];
+              ruses = texts (get b "use");
               routs;
               rcmd = List.map (subst table) command;
               rdesc = subst table descr;
@@ -230,6 +231,16 @@ let project (env : Eval.env) =
           | Some _ -> ())
         t.uses)
     targets;
+  List.iter
+    (fun (r : rule) ->
+      List.iter
+        (fun u ->
+          if find p u = None then
+            Diag.error ~span:r.rspan
+              ~hint:(Suggest.hint u (List.map (fun (x : target) -> x.name) targets))
+              "rule %s uses %S, which is not a target" r.rname u)
+        r.ruses)
+    p.rules;
   let seen_runs = Hashtbl.create 4 in
   List.iter
     (fun (s : script) ->
