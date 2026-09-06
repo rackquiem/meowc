@@ -4,12 +4,18 @@ let sanitize s =
   String.concat "/" (List.map (fun p -> if p = ".." then "__" else p) (String.split_on_char '/' s))
 
 let obj_of p (t : target) src = p.tc.builddir ^ "/obj/" ^ t.name ^ "/" ^ sanitize src ^ ".o"
-let lib_of p (t : target) = p.tc.builddir ^ "/lib" ^ t.name ^ ".a"
-let dylib_ext p =
-  match p.platform with "darwin" -> ".dylib" | "windows" -> ".dll" | _ -> ".so"
+let fmt p = Binfmt.of_platform p.platform
+let exe_ext p = Binfmt.exe_ext (fmt p)
+let lib_of p (t : target) = p.tc.builddir ^ "/" ^ Binfmt.static_name t.name
+let so_of p (t : target) = p.tc.builddir ^ "/" ^ Binfmt.shared_name (fmt p) t.name
 
-let exe_ext p = if p.platform = "windows" then ".exe" else ""
-let so_of p (t : target) = p.tc.builddir ^ "/lib" ^ t.name ^ dylib_ext p
+(* Formats that cannot be linked against directly leave an import library
+   beside the shared one, which is what dependents resolve -l against. *)
+let implib_of p (t : target) =
+  if t.kind <> Shared then None
+  else
+    Option.map (fun n -> p.tc.builddir ^ "/" ^ n) (Binfmt.import_name (fmt p) t.name)
+
 let bin_of p (t : target) = p.tc.builddir ^ "/bin/" ^ t.name ^ exe_ext p
 let test_of p (t : target) = p.tc.builddir ^ "/test/" ^ t.name ^ exe_ext p
 
@@ -49,7 +55,7 @@ let compile_cmd p ~pic (t : target) src obj =
   in
   let flags =
     base @ inherited_flags
-    @ (if Hashtbl.mem pic t.name then [ "-fPIC" ] else [])
+    @ (if Hashtbl.mem pic t.name then Binfmt.pic_flags (fmt p) else [])
     @ List.concat_map (fun d -> [ "-D"; d ]) t.defines
     @ List.concat_map (fun d -> [ "-I"; d ]) (includes_of p t)
   in
@@ -72,14 +78,14 @@ let link_cmd p (t : target) objs =
   | Lib -> Array.of_list ((p.tc.ar :: [ "rcs"; out ]) @ objs)
   | Shared ->
       let soname =
-        match t.soname with
-        | None -> []
-        | Some s ->
-            if p.platform = "darwin" then [ "-Wl,-install_name," ^ s ] else [ "-Wl,-soname," ^ s ]
+        match t.soname with None -> [] | Some s -> Binfmt.soname_flags (fmt p) s
+      in
+      let implib =
+        match implib_of p t with None -> [] | Some f -> Binfmt.implib_flags (fmt p) f
       in
       Array.of_list
-        (((driver :: [ "-shared" ]) @ objs @ [ "-o"; out ]) @ soname @ link_libs p t @ t.ldflags
-       @ p.tc.ldflags @ p.tc.xflags)
+        (((driver :: Binfmt.shared_flags (fmt p)) @ objs @ [ "-o"; out ]) @ soname @ implib
+       @ link_libs p t @ t.ldflags @ p.tc.ldflags @ p.tc.xflags)
   | Bin | Test ->
       Array.of_list (((driver :: objs) @ [ "-o"; out ]) @ link_libs p t @ t.ldflags @ p.tc.ldflags @ p.tc.xflags)
 
@@ -125,7 +131,8 @@ let of_project p =
       let tag, _ = tag_of t.kind in
       let ins = objs @ List.map (fun (d : target) -> out_of p d) (deps_of p t) in
       let label = match t.kind with Lib | Shared -> Filename.basename out | _ -> t.name in
-      add (Graph.make ~id:!n ~tag ~label ~cmd:(link_cmd p t objs) ~outs:[ out ] ~ins ());
+      let outs = out :: Option.to_list (implib_of p t) in
+      add (Graph.make ~id:!n ~tag ~label ~cmd:(link_cmd p t objs) ~outs ~ins ());
       Hashtbl.replace outputs t.name (!n - 1))
     p.targets;
   { g = Graph.build (List.rev !nodes); outputs; p }

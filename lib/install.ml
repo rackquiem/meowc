@@ -8,13 +8,16 @@ let dest_dir p = function
 
 let plan p =
   let from_targets =
-    List.filter_map
+    List.concat_map
       (fun (t : target) ->
         match t.install with
-        | None -> None
+        | None -> []
         | Some where ->
-            let src = Build.out_of p t in
-            Some (src, Filename.concat (dest_dir p where) (Filename.basename src)))
+            (* An import library is half of the shared library it belongs to,
+               so it travels with it. *)
+            List.map
+              (fun src -> (src, Filename.concat (dest_dir p where) (Filename.basename src)))
+              (Build.out_of p t :: Option.to_list (Build.implib_of p t)))
       p.targets
   in
   let from_blocks =

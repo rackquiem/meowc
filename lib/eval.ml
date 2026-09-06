@@ -96,6 +96,7 @@ let platform_vars env plat arch =
     [
       ("platform", plat);
       ("arch", arch);
+      ("format", Binfmt.name (Binfmt.of_platform plat));
       ("linux", if plat = "linux" then "true" else "false");
       ("darwin", if plat = "darwin" then "true" else "false");
       ("bsd", if plat = "bsd" then "true" else "false");

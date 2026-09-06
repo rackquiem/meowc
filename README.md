@@ -17,16 +17,21 @@ Cross compilation is driven by a target triple. Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is
 invoked with `--target`. Each triple gets its own build directory and probe
 cache, so host and cross trees do not invalidate each other, and the triple
-drives `platform`, `arch` and the conditionals built on them
+drives `platform`, `arch`, `format` and the conditionals built on them
 
 ```
 meowc --target x86_64-w64-mingw32 build
 meowc --target aarch64-linux-gnu --sysroot /opt/sysroots/aarch64 build
 ```
 
+Output names and link flags follow the object format rather than the operating
+system. ELF gets `-fPIC`, `-shared` and `-Wl,-soname`, MachO gets `-dynamiclib`
+and `-Wl,-install_name`, and COFF drops both the position independent code flag
+and the soname, writing `rt.dll` next to the `librt.dll.a` that dependents link
+against
+
 ## TODO
 
-- Remove remaining ELF and MachO assumptions from linker invocation and platform specific compiler flags
 - Emit response files when command lines approach the platform argument length limit
 - Integrate precompiled headers into dependency tracking and invalidation
 - Replace periodic mtime polling in `watch` with filesystem event notifications such as `inotify`
