@@ -25,11 +25,11 @@ run demo {
 }
 ```
 
-Rules stay for files. A rule runs because something needs the file it writes, a
+A rule runs because something needs the file it writes, a
 run block runs because you asked for it, so a command that produces nothing has
 somewhere to live
 
-Cross compilation is driven by a target triple. Tools are taken from the triple
+Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is
 invoked with `--target`. Each triple gets its own build directory and probe
 cache, so host and cross trees do not invalidate each other, and the triple
