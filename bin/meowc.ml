@@ -27,6 +27,8 @@ let usage =
       "    -C DIR         change to DIR first";
       "    -D name=value  set an option declared with 'option'";
       "    --prefix DIR   install prefix (default /usr/local)";
+      "    --target TRIPLE cross compile for TRIPLE (e.g. aarch64-linux-gnu)";
+      "    --sysroot DIR  sysroot to compile and link against";
       "    -k             keep going after a failure";
       "    -n             dry run, print what would happen";
       "    -v             print each command as it finishes";
@@ -73,12 +75,14 @@ type flags = {
   mutable dot : bool;
   mutable targets_only : bool;
   mutable interval : float;
+  mutable target : string;
+  mutable sysroot : string;
 }
 
 let fl =
   { file = "build.meow"; jobs = 0; chdir = ""; defs = []; prefix = None; keep = false;
     dry = false; verbose = false; quiet = false; dot = false; targets_only = false;
-    interval = 0.25 }
+    interval = 0.25; target = ""; sysroot = "" }
 
 let parse_args argv =
   let rest = ref [] in
@@ -102,6 +106,8 @@ let parse_args argv =
             fl.defs <- fl.defs @ [ (String.sub v 0 i, String.sub v (i + 1) (String.length v - i - 1)) ]);
         go r
     | "--prefix" :: v :: r -> fl.prefix <- Some v; go r
+    | "--target" :: v :: r -> fl.target <- v; go r
+    | "--sysroot" :: v :: r -> fl.sysroot <- v; go r
     | "--interval" :: v :: r -> fl.interval <- (try float_of_string v with _ -> 0.25); go r
     | "--dot" :: r -> fl.dot <- true; go r
     | "--targets" :: r -> fl.targets_only <- true; go r
@@ -111,7 +117,8 @@ let parse_args argv =
     | "-q" :: r -> fl.quiet <- true; go r
     | "--no-color" :: r -> Style.enabled := false; go r
     | ("-h" | "--help") :: _ -> print_endline usage; exit 0
-    | (("-f" | "-j" | "-C" | "-D" | "--prefix") as o) :: [] -> Diag.error "%s needs a value" o
+    | (("-f" | "-j" | "-C" | "-D" | "--prefix" | "--target" | "--sysroot") as o) :: [] ->
+        Diag.error "%s needs a value" o
     | a :: r when String.length a > 2 && String.sub a 0 2 = "-j" ->
         let v = String.sub a 2 (String.length a - 2) in
         fl.jobs <- (try int_of_string v with _ -> Diag.error "-j wants a number, got %S" v);
@@ -144,7 +151,11 @@ let configure () =
     Diag.error ~hint:"run 'meowc init <name>' to start one" "no %s here" fl.file;
   let overrides = Hashtbl.create 8 in
   List.iter (fun (k, v) -> Hashtbl.replace overrides k v) fl.defs;
-  let env = Eval.create ~overrides ~quiet:fl.quiet ~builddir:"build" in
+  let env = Eval.create ~overrides ~quiet:fl.quiet ~builddir:"build" ~target:fl.target in
+  if fl.sysroot <> "" then
+    Eval.apply_toolchain env
+      [ { Ast.key = "sysroot"; kspan = Span.none;
+          values = [ { Ast.text = fl.sysroot; span = Span.none; quoted = false } ] } ];
   (match fl.prefix with Some p -> Eval.setvar env "prefix" [ p ] | None -> ());
   let stmts = Parse.file fl.file in
   Eval.run env (Filename.dirname fl.file) stmts;

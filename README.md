@@ -8,10 +8,21 @@ meowc tracks dependencies at the action level and only reruns actions whose inpu
 dune build && ln -sf _build/default/bin/meowc.exe meowc
 cd examples/raytracer && ../../meowc build && ../../meowc test
 ```
+
+Cross compilation is driven by a target triple. Tools are taken from the triple
+prefix when a matching toolchain is installed, otherwise the host compiler is
+invoked with `--target`. Each triple gets its own build directory and probe
+cache, so host and cross trees do not invalidate each other, and the triple
+drives `platform`, `arch` and the conditionals built on them
+
+```
+meowc --target x86_64-w64-mingw32 build
+meowc --target aarch64-linux-gnu --sysroot /opt/sysroots/aarch64 build
+```
+
 ## TODO
 
-- Model cross-compilation through target triples, sysroots and per-target toolchain configuration
-- Remove ELF and MachO assumptions from shared library naming, linker invocation, and platform specific compiler flags
+- Remove remaining ELF and MachO assumptions from linker invocation and platform specific compiler flags
 - Emit response files when command lines approach the platform argument length limit
 - Integrate precompiled headers into dependency tracking and invalidation
 - Replace periodic mtime polling in `watch` with filesystem event notifications such as `inotify`

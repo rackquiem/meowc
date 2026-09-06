@@ -60,20 +60,82 @@ let compiler_id cc =
     else if has "tcc" then "tcc"
     else "unknown"
 
+let triple_arch t = match String.index_opt t '-' with Some i -> String.sub t 0 i | None -> t
+
+let triple_platform t =
+  let has sub =
+    let n = String.length sub and m = String.length t in
+    let rec go i = i + n <= m && (String.sub t i n = sub || go (i + 1)) in
+    go 0
+  in
+  if has "linux" then "linux"
+  else if has "darwin" || has "apple" || has "macos" then "darwin"
+  else if has "mingw" || has "windows" || has "cygwin" then "windows"
+  else if has "freebsd" || has "openbsd" || has "netbsd" || has "dragonfly" then "bsd"
+  else if has "wasi" || has "emscripten" then "wasm"
+  else if has "none" || has "eabi" then "bare"
+  else "unknown"
+
 let default_tc : Types.toolchain =
   {
     cc = "cc";
     cxx = "c++";
     ar = "ar";
     ranlib = "ranlib";
+    target = "";
+    sysroot = "";
+    xflags = [];
     cflags = [];
     cxxflags = [];
     ldflags = [];
     builddir = "build";
   }
 
-let create ~overrides ~quiet ~builddir =
-  let tc = { default_tc with builddir } in
+let platform_vars env plat arch =
+  List.iter (fun (k, v) -> setvar env k [ v ])
+    [
+      ("platform", plat);
+      ("arch", arch);
+      ("linux", if plat = "linux" then "true" else "false");
+      ("darwin", if plat = "darwin" then "true" else "false");
+      ("bsd", if plat = "bsd" then "true" else "false");
+      ("windows", if plat = "windows" then "true" else "false");
+      ("unix", if plat = "windows" || plat = "bare" || plat = "wasm" then "false" else "true");
+    ]
+
+let derive_cross env explicit =
+  let tc = env.tc in
+  let t = tc.target in
+  let set k = Hashtbl.mem explicit k in
+  let prefixed n = t ^ "-" ^ n in
+  let have_prefixed = Exec.which (prefixed "gcc") || Exec.which (prefixed "cc") in
+  let tc =
+    if not have_prefixed then tc
+    else
+      let pick n alt = if Exec.which (prefixed n) then prefixed n else prefixed alt in
+      {
+        tc with
+        cc = (if set "cc" then tc.cc else pick "gcc" "cc");
+        cxx = (if set "cxx" then tc.cxx else pick "g++" "c++");
+        ar = (if set "ar" then tc.ar else prefixed "ar");
+        ranlib = (if set "ranlib" then tc.ranlib else prefixed "ranlib");
+      }
+  in
+  let xflags =
+    (if have_prefixed then [] else [ "--target=" ^ t ])
+    @ (if tc.sysroot = "" then [] else [ "--sysroot=" ^ tc.sysroot ])
+  in
+  let tc = { tc with xflags } in
+  let tc =
+    if set "builddir" || Filename.basename tc.builddir = t then tc
+    else { tc with builddir = Filename.concat tc.builddir t }
+  in
+  env.tc <- tc;
+  platform_vars env (triple_platform t) (triple_arch t)
+
+let create ~overrides ~quiet ~builddir ~target =
+  let builddir = if target = "" then builddir else Filename.concat builddir target in
+  let tc = { default_tc with builddir; target } in
   let env =
     {
       vars = Hashtbl.create 64;
@@ -92,23 +154,21 @@ let create ~overrides ~quiet ~builddir =
       probes_shown = 0;
     }
   in
-  let os = uname () in
-  let plat =
-    match os with
+  let host_plat =
+    match uname () with
     | "linux" -> "linux"
     | "darwin" -> "darwin"
     | "freebsd" | "openbsd" | "netbsd" -> "bsd"
     | s -> s
   in
+  if target = "" then platform_vars env host_plat (arch ())
+  else platform_vars env (triple_platform target) (triple_arch target);
   List.iter (fun (k, v) -> setvar env k [ v ])
     [
-      ("platform", plat);
-      ("arch", arch ());
-      ("linux", if plat = "linux" then "true" else "false");
-      ("darwin", if plat = "darwin" then "true" else "false");
-      ("bsd", if plat = "bsd" then "true" else "false");
-      ("windows", if plat = "windows" then "true" else "false");
-      ("unix", if plat = "windows" then "false" else "true");
+      ("host", host_plat);
+      ("target", target);
+      ("sysroot", "");
+      ("cross", if target = "" then "false" else "true");
       ("builddir", builddir);
       ("cc", tc.cc);
       ("cxx", tc.cxx);
@@ -116,6 +176,7 @@ let create ~overrides ~quiet ~builddir =
       ("project", env.pname);
       ("prefix", "/usr/local");
     ];
+  if target <> "" then derive_cross env (Hashtbl.create 1);
   env
 
 let lookup env name span =
@@ -261,6 +322,8 @@ let rec flatten_items env items =
     items
 
 let apply_toolchain env fields =
+  let explicit = Hashtbl.create 8 in
+  List.iter (fun (f : field) -> Hashtbl.replace explicit f.key ()) fields;
   List.iter
     (fun (f : field) ->
       let vs = expand_all env f.values in
@@ -276,20 +339,27 @@ let apply_toolchain env fields =
         | "cxxflags" -> { tc with cxxflags = tc.cxxflags @ vs }
         | "ldflags" -> { tc with ldflags = tc.ldflags @ vs }
         | "builddir" -> { tc with builddir = one () }
+        | "target" -> { tc with target = one () }
+        | "sysroot" -> { tc with sysroot = one () }
         | k ->
             Diag.error ~span:f.kspan
               ~hint:
                 (Suggest.hint k
-                   [ "cc"; "cxx"; "ar"; "ranlib"; "cflags"; "cxxflags"; "ldflags"; "builddir" ])
+                   [ "cc"; "cxx"; "ar"; "ranlib"; "cflags"; "cxxflags"; "ldflags"; "builddir";
+                     "target"; "sysroot" ])
               "toolchain has no field %S" k))
     fields;
+  if env.tc.target <> "" then derive_cross env explicit;
   setvar env "cc" [ env.tc.cc ];
   setvar env "cxx" [ env.tc.cxx ];
+  setvar env "target" [ env.tc.target ];
+  setvar env "sysroot" [ env.tc.sysroot ];
+  setvar env "cross" [ (if env.tc.target = "" then "false" else "true") ];
   setvar env "builddir" [ env.tc.builddir ];
   setvar env "cc_id" [ compiler_id env.tc.cc ];
   env.probe.Probe.cc <- env.tc.cc;
-  env.probe.Probe.cflags <- env.tc.cflags;
-  env.probe.Probe.ldflags <- env.tc.ldflags
+  env.probe.Probe.cflags <- env.tc.xflags @ env.tc.cflags;
+  env.probe.Probe.ldflags <- env.tc.xflags @ env.tc.ldflags
 
 let rec predeclare env stmts =
   let name (v : value) = v.text in

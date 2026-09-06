@@ -73,3 +73,12 @@ let capture cmd =
   (code, out)
 
 let ok cmd = fst (capture cmd) = 0
+
+let which name =
+  if String.contains name '/' then Sys.file_exists name
+  else
+    match Sys.getenv_opt "PATH" with
+    | None -> false
+    | Some path ->
+        String.split_on_char ':' path
+        |> List.exists (fun dir -> dir <> "" && Sys.file_exists (Filename.concat dir name))

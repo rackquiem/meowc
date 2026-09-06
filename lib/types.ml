@@ -37,6 +37,9 @@ type toolchain = {
   cxx : string;
   ar : string;
   ranlib : string;
+  target : string;
+  sysroot : string;
+  xflags : string list;
   cflags : string list;
   cxxflags : string list;
   ldflags : string list;

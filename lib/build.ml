@@ -5,10 +5,13 @@ let sanitize s =
 
 let obj_of p (t : target) src = p.tc.builddir ^ "/obj/" ^ t.name ^ "/" ^ sanitize src ^ ".o"
 let lib_of p (t : target) = p.tc.builddir ^ "/lib" ^ t.name ^ ".a"
-let dylib_ext p = if p.platform = "darwin" then ".dylib" else ".so"
+let dylib_ext p =
+  match p.platform with "darwin" -> ".dylib" | "windows" -> ".dll" | _ -> ".so"
+
+let exe_ext p = if p.platform = "windows" then ".exe" else ""
 let so_of p (t : target) = p.tc.builddir ^ "/lib" ^ t.name ^ dylib_ext p
-let bin_of p (t : target) = p.tc.builddir ^ "/bin/" ^ t.name
-let test_of p (t : target) = p.tc.builddir ^ "/test/" ^ t.name
+let bin_of p (t : target) = p.tc.builddir ^ "/bin/" ^ t.name ^ exe_ext p
+let test_of p (t : target) = p.tc.builddir ^ "/test/" ^ t.name ^ exe_ext p
 
 let out_of p (t : target) =
   match t.kind with
@@ -37,7 +40,7 @@ let includes_of p (t : target) =
 let compile_cmd p ~pic (t : target) src obj =
   let lang = lang_of src in
   let driver = match lang with Cxx -> p.tc.cxx | _ -> p.tc.cc in
-  let base = match lang with Cxx -> p.tc.cxxflags @ t.cxxflags | _ -> p.tc.cflags @ t.cflags in
+  let base = p.tc.xflags @ (match lang with Cxx -> p.tc.cxxflags @ t.cxxflags | _ -> p.tc.cflags @ t.cflags) in
   let inherited_flags =
     List.concat_map
       (fun (d : target) -> match lang with Cxx -> d.cxxflags | _ -> d.cflags)
@@ -76,9 +79,9 @@ let link_cmd p (t : target) objs =
       in
       Array.of_list
         (((driver :: [ "-shared" ]) @ objs @ [ "-o"; out ]) @ soname @ link_libs p t @ t.ldflags
-       @ p.tc.ldflags)
+       @ p.tc.ldflags @ p.tc.xflags)
   | Bin | Test ->
-      Array.of_list (((driver :: objs) @ [ "-o"; out ]) @ link_libs p t @ t.ldflags @ p.tc.ldflags)
+      Array.of_list (((driver :: objs) @ [ "-o"; out ]) @ link_libs p t @ t.ldflags @ p.tc.ldflags @ p.tc.xflags)
 
 let tag_of = function
   | Lib -> ("ar", Style.magenta)
