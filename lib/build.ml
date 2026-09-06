@@ -43,6 +43,12 @@ let includes_of p (t : target) =
   let inherited = List.concat_map (fun (d : target) -> d.includes) (deps_of p t) in
   List.sort_uniq compare (t.includes @ inherited @ config_dir p)
 
+(* A compiler only writes a depfile when it preprocesses, which for assembly
+   means .S and not .s. Asking for one that never appears would leave the action
+   permanently out of date. *)
+let tracks_deps src =
+  match lang_of src with Asm -> Filename.extension src = ".S" | C | Cxx -> true
+
 let compile_cmd p ~pic (t : target) src obj =
   let lang = lang_of src in
   let driver = match lang with Cxx -> p.tc.cxx | _ -> p.tc.cc in
@@ -59,7 +65,8 @@ let compile_cmd p ~pic (t : target) src obj =
     @ List.concat_map (fun d -> [ "-D"; d ]) t.defines
     @ List.concat_map (fun d -> [ "-I"; d ]) (includes_of p t)
   in
-  Array.of_list (((driver :: flags) @ [ "-MMD"; "-MF"; obj ^ ".d" ]) @ [ "-c"; src; "-o"; obj ])
+  let dep = if tracks_deps src then [ "-MMD"; "-MF"; obj ^ ".d" ] else [] in
+  Array.of_list (((driver :: flags) @ dep) @ [ "-c"; src; "-o"; obj ])
 
 let link_libs p (t : target) =
   let deps = List.rev (deps_of p t) in
@@ -116,10 +123,11 @@ let of_project p =
           (fun src ->
             let obj = obj_of p t src in
             let cmd = compile_cmd p ~pic t src obj in
-            let tag = if lang_of src = Cxx then "c++" else "cc" in
+            let tag = match lang_of src with Cxx -> "c++" | Asm -> "as" | C -> "cc" in
+            let depfile = if tracks_deps src then Some (obj ^ ".d") else None in
             add
-              (Graph.make ~id:!n ~tag ~label:src ~cmd ~outs:[ obj ] ~ins:[ src ]
-                 ~depfile:(obj ^ ".d") ~ords:gen_headers ~rsp:(obj ^ ".rsp") ());
+              (Graph.make ~id:!n ~tag ~label:src ~cmd ~outs:[ obj ] ~ins:[ src ] ?depfile
+                 ~ords:gen_headers ~rsp:(obj ^ ".rsp") ());
             obj)
           (all_srcs t)
       in
@@ -142,6 +150,7 @@ let paint tag text =
   match tag with
   | "cc" -> Style.blue text
   | "c++" -> Style.blue text
+  | "as" -> Style.magenta text
   | "ar" -> Style.magenta text
   | "so" -> Style.cyan text
   | "ld" -> Style.green text

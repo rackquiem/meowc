@@ -77,10 +77,13 @@ let uniq_targets ts =
 
 let order p ts = uniq_targets (List.concat_map (fun t -> deps_of p t @ [ t ]) ts)
 
-let lang_of path =
-  match String.lowercase_ascii (Filename.extension path) with
-  | ".cc" | ".cpp" | ".cxx" | ".c++" | ".mm" -> Cxx
-  | ".s" | ".asm" -> Asm
-  | _ -> C
+let langs =
+  [ (".c", C); (".m", C);
+    (".cc", Cxx); (".cpp", Cxx); (".cxx", Cxx); (".c++", Cxx); (".mm", Cxx);
+    (".s", Asm); (".asm", Asm) ]
+
+let source_exts = List.map fst langs
+let lang_opt path = List.assoc_opt (String.lowercase_ascii (Filename.extension path)) langs
+let lang_of path = Option.value (lang_opt path) ~default:C
 
 let all_srcs t = t.srcs @ t.gen_srcs

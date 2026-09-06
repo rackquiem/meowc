@@ -2,7 +2,7 @@ let render (b : Build.t) =
   let dir = Sys.getcwd () in
   let entries =
     Array.to_list b.g.Graph.nodes
-    |> List.filter (fun (n : Graph.node) -> n.tag = "cc" || n.tag = "c++")
+    |> List.filter (fun (n : Graph.node) -> List.mem n.tag [ "cc"; "c++"; "as" ])
     |> List.map (fun (n : Graph.node) ->
            Printf.sprintf
              "  {\n    \"directory\": %s,\n    \"file\": %s,\n    \"output\": %s,\n    \"arguments\": %s\n  }"
@@ -15,5 +15,5 @@ let render (b : Build.t) =
 let write b path =
   Fs.write path (render b);
   List.length
-    (List.filter (fun (n : Graph.node) -> n.Graph.tag = "cc" || n.Graph.tag = "c++")
+    (List.filter (fun (n : Graph.node) -> List.mem n.Graph.tag [ "cc"; "c++"; "as" ])
        (Array.to_list b.Build.g.Graph.nodes))

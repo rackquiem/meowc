@@ -134,6 +134,13 @@ let sources_of ~extra ((b : block), base) (t : target) =
     Diag.error ~span:b.nspan
       ~hint:(Printf.sprintf "no file matches %s" (String.concat " " pats))
       "%s %s matched no sources" b.kind b.bname;
+  List.iter
+    (fun f ->
+      if lang_opt f = None then
+        Diag.error ~span:b.nspan
+          ~hint:("meowc compiles " ^ String.concat " " source_exts)
+          "%s %s lists %s, which is not a source meowc can compile" b.kind b.bname f)
+    files;
   let gen, real = List.partition (fun f -> List.mem f extra) files in
   { t with srcs = real; gen_srcs = gen }
 
