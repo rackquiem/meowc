@@ -381,46 +381,83 @@ let cmd_targets () =
           (Style.plural (List.length p.targets) "target"
           :: (if p.scripts = [] then [] else [ Style.plural (List.length p.scripts) "run block" ]))))
 
-(* In kitty a picture is cheaper to read than the source of one, so render it and
-   hand it to the terminal rather than leaving a file for a second program. *)
-let in_kitty () =
-  Sys.getenv_opt "KITTY_WINDOW_ID" <> None && Unix.isatty Unix.stdout && Exec.which "kitty"
+(* A picture wants a window of its own. Any real image viewer beats drawing over
+   the terminal that asked for it, so take whichever one is installed and fall
+   back to a fullscreen kitty, which a kitty user already has. *)
+let viewers =
+  [ ("imv", [ "-f" ]); ("swayimg", [ "--fullscreen" ]); ("nsxiv", [ "-f" ]); ("sxiv", [ "-f" ]);
+    ("feh", [ "-F" ]); ("eog", [ "-f" ]); ("qimgv", [ "--fullscreen" ]) ]
 
-let draw dot =
+let graphical () =
+  Sys.getenv_opt "DISPLAY" <> None || Sys.getenv_opt "WAYLAND_DISPLAY" <> None
+
+let viewer png =
+  match Sys.getenv_opt "MEOWC_VIEWER" with
+  | Some v when String.trim v <> "" ->
+      Some (Array.of_list (List.filter (fun w -> w <> "") (String.split_on_char ' ' v) @ [ png ]))
+  | _ -> (
+      match List.find_opt (fun (v, _) -> Exec.which v) viewers with
+      | Some (v, flags) -> Some (Array.of_list ((v :: flags) @ [ png ]))
+      | None ->
+          if Exec.which "kitty" then
+            Some
+              [| "kitty"; "--start-as=fullscreen"; "--title"; "meowc graph"; "--hold"; "kitten";
+                 "icat"; "--scale-up"; png |]
+          else None)
+
+(* The viewer outlives meowc, and its startup chatter is not meowc's output *)
+let spawn_detached cmd =
+  flush stdout;
+  let nul = Exec.devnull () in
+  let quiet = Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0 in
+  (match Unix.create_process cmd.(0) cmd nul quiet quiet with
+  | _ -> ()
+  | exception Unix.Unix_error (e, _, _) ->
+      Diag.error "cannot run %s: %s" cmd.(0) (Unix.error_message e));
+  Unix.close nul;
+  Unix.close quiet
+
+let inline () =
+  Sys.getenv_opt "KITTY_WINDOW_ID" <> None && Unix.isatty Unix.stdout && Exec.which "kitten"
+
+let draw ~png dot =
   if not (Exec.which "dot") then
     Diag.error ~hint:"install graphviz" "dot is not on the path, so there is nothing to draw with";
   let src = Filename.temp_file "meowc-graph" ".dot" in
-  let png = Filename.temp_file "meowc-graph" ".png" in
+  Fs.mkdir_p (Filename.dirname png);
   Fs.write src dot;
   let rendered = Exec.ok [| "dot"; "-Tpng"; "-o"; png; src |] in
   (try Sys.remove src with Sys_error _ -> ());
   if not rendered then Diag.error "dot could not render the graph";
-  if in_kitty () then begin
-    flush stdout;
-    let cmd = [| "kitty"; "+kitten"; "icat"; png |] in
-    (match Unix.create_process cmd.(0) cmd Unix.stdin Unix.stdout Unix.stderr with
-    | pid -> ignore (Unix.waitpid [] pid)
-    | exception Unix.Unix_error (e, _, _) ->
-        Diag.error "cannot run kitty: %s" (Unix.error_message e));
-    (try Sys.remove png with Sys_error _ -> ())
-  end
-  else Printf.printf "  %s %s\n" (Style.dim "wrote") png
+  match (if graphical () then viewer png else None) with
+  | Some cmd -> spawn_detached cmd
+  | None ->
+      if inline () then begin
+        flush stdout;
+        let cmd = [| "kitten"; "icat"; png |] in
+        match Unix.create_process cmd.(0) cmd Unix.stdin Unix.stdout Unix.stderr with
+        | pid -> ignore (Unix.waitpid [] pid)
+        | exception Unix.Unix_error (e, _, _) ->
+            Diag.error "cannot run kitten: %s" (Unix.error_message e)
+      end
+      else Printf.printf "  %s %s\n" (Style.dim "wrote") png
 
 (* Raw graphviz on a terminal is for nobody, so draw it there instead *)
-let drawing () = fl.show || (fl.dot && in_kitty ())
+let drawing () = fl.show || (fl.dot && Unix.isatty Unix.stdout)
 
 let cmd_graph names =
   let p = configure () in
+  let png = Filename.concat p.tc.builddir "graph.png" in
   if fl.targets_only then
     let text = Dot.targets_only p in
-    if drawing () then draw text else print_string text
+    if drawing () then draw ~png text else print_string text
   else
     let b = Build.of_project p in
     let selected =
       match names with [] -> None | _ -> Some (Build.select b (select_targets p names))
     in
     let keep i = match selected with None -> true | Some s -> Hashtbl.mem s i in
-    if drawing () then draw (Dot.render ?selected b)
+    if drawing () then draw ~png (Dot.render ?selected b)
     else if fl.dot then print_string (Dot.render ?selected b)
     else begin
       banner p;

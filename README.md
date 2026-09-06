@@ -46,11 +46,12 @@ rule tables {
 }
 ```
 
-`meowc graph --show` renders the graph and draws it in the terminal, so looking
-at one costs nothing but the command. In kitty `--dot` on a terminal does the
-same, since raw graphviz on a screen is for nobody, while a pipe or a redirect
-still writes the source. Without kitty the picture is written to a file and the
-path printed
+`meowc graph --show` renders the graph and opens it in an image viewer, so
+looking at one costs nothing but the command. It takes the first of `imv`,
+`swayimg`, `nsxiv`, `sxiv`, `feh`, `eog` or `qimgv` that is installed, or
+`$MEOWC_VIEWER` if that is set, and falls back to a fullscreen kitty. On a
+terminal `--dot` does the same, since raw graphviz on a screen is for nobody,
+while a pipe or a redirect still writes the source
 
 Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is
