@@ -46,12 +46,11 @@ rule tables {
 }
 ```
 
-`meowc graph --show` renders the graph and opens it in an image viewer, so
-looking at one costs nothing but the command. It takes the first of `imv`,
-`swayimg`, `nsxiv`, `sxiv`, `feh`, `eog` or `qimgv` that is installed, or
-`$MEOWC_VIEWER` if that is set, and falls back to a fullscreen kitty. On a
-terminal `--dot` does the same, since raw graphviz on a screen is for nobody,
-while a pipe or a redirect still writes the source
+`meowc graph --show` renders the graph to SVG and opens it in the browser, which
+is the one viewer everyone has that draws vectors rather than pixels. It uses
+`$MEOWC_VIEWER`, then `$BROWSER`, then whichever of `firefox` or `xdg-open` is
+installed. On a terminal `--dot` does the same, since raw graphviz on a screen is
+for nobody, while a pipe or a redirect still writes the source
 
 Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is

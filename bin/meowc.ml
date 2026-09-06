@@ -381,29 +381,27 @@ let cmd_targets () =
           (Style.plural (List.length p.targets) "target"
           :: (if p.scripts = [] then [] else [ Style.plural (List.length p.scripts) "run block" ]))))
 
-(* A picture wants a window of its own. Any real image viewer beats drawing over
-   the terminal that asked for it, so take whichever one is installed and fall
-   back to a fullscreen kitty, which a kitty user already has. *)
-let viewers =
-  [ ("imv", [ "-f" ]); ("swayimg", [ "--fullscreen" ]); ("nsxiv", [ "-f" ]); ("sxiv", [ "-f" ]);
-    ("feh", [ "-F" ]); ("eog", [ "-f" ]); ("qimgv", [ "--fullscreen" ]) ]
+(* Graphviz draws vectors, and a browser is the one viewer everyone has that
+   renders them without turning the text into pixels. *)
+let browsers = [ "firefox"; "xdg-open" ]
 
 let graphical () =
   Sys.getenv_opt "DISPLAY" <> None || Sys.getenv_opt "WAYLAND_DISPLAY" <> None
 
-let viewer png =
-  match Sys.getenv_opt "MEOWC_VIEWER" with
-  | Some v when String.trim v <> "" ->
-      Some (Array.of_list (List.filter (fun w -> w <> "") (String.split_on_char ' ' v) @ [ png ]))
-  | _ -> (
-      match List.find_opt (fun (v, _) -> Exec.which v) viewers with
-      | Some (v, flags) -> Some (Array.of_list ((v :: flags) @ [ png ]))
-      | None ->
-          if Exec.which "kitty" then
-            Some
-              [| "kitty"; "--start-as=fullscreen"; "--title"; "meowc graph"; "--hold"; "kitten";
-                 "icat"; "--scale-up"; png |]
-          else None)
+let words v = List.filter (fun w -> w <> "") (String.split_on_char ' ' v)
+
+(* A browser reads a relative path as something to search for, not a file *)
+let file_url p =
+  "file://" ^ if Filename.is_relative p then Filename.concat (Sys.getcwd ()) p else p
+
+let viewer svg =
+  let named =
+    match (Sys.getenv_opt "MEOWC_VIEWER", Sys.getenv_opt "BROWSER") with
+    | Some v, _ when String.trim v <> "" -> Some (words v)
+    | _, Some v when String.trim v <> "" -> Some (words v)
+    | _ -> Option.map (fun b -> [ b ]) (List.find_opt Exec.which browsers)
+  in
+  Option.map (fun argv -> Array.of_list (argv @ [ file_url svg ])) named
 
 (* The viewer outlives meowc, and its startup chatter is not meowc's output *)
 let spawn_detached cmd =
@@ -420,19 +418,22 @@ let spawn_detached cmd =
 let inline () =
   Sys.getenv_opt "KITTY_WINDOW_ID" <> None && Unix.isatty Unix.stdout && Exec.which "kitten"
 
-let draw ~png dot =
+let draw ~svg dot =
   if not (Exec.which "dot") then
     Diag.error ~hint:"install graphviz" "dot is not on the path, so there is nothing to draw with";
   let src = Filename.temp_file "meowc-graph" ".dot" in
-  Fs.mkdir_p (Filename.dirname png);
+  Fs.mkdir_p (Filename.dirname svg);
   Fs.write src dot;
-  let rendered = Exec.ok [| "dot"; "-Tpng"; "-o"; png; src |] in
-  (try Sys.remove src with Sys_error _ -> ());
-  if not rendered then Diag.error "dot could not render the graph";
-  match (if graphical () then viewer png else None) with
+  let rendered = Exec.ok [| "dot"; "-Tsvg"; "-o"; svg; src |] in
+  let finish () = try Sys.remove src with Sys_error _ -> () in
+  if not rendered then (finish (); Diag.error "dot could not render the graph");
+  (match (if graphical () then viewer svg else None) with
   | Some cmd -> spawn_detached cmd
   | None ->
       if inline () then begin
+        (* a terminal cannot draw vectors, so this one branch wants pixels *)
+        let png = Filename.remove_extension svg ^ ".png" in
+        ignore (Exec.ok [| "dot"; "-Tpng"; "-o"; png; src |]);
         flush stdout;
         let cmd = [| "kitten"; "icat"; png |] in
         match Unix.create_process cmd.(0) cmd Unix.stdin Unix.stdout Unix.stderr with
@@ -440,24 +441,25 @@ let draw ~png dot =
         | exception Unix.Unix_error (e, _, _) ->
             Diag.error "cannot run kitten: %s" (Unix.error_message e)
       end
-      else Printf.printf "  %s %s\n" (Style.dim "wrote") png
+      else Printf.printf "  %s %s\n" (Style.dim "wrote") svg);
+  finish ()
 
 (* Raw graphviz on a terminal is for nobody, so draw it there instead *)
 let drawing () = fl.show || (fl.dot && Unix.isatty Unix.stdout)
 
 let cmd_graph names =
   let p = configure () in
-  let png = Filename.concat p.tc.builddir "graph.png" in
+  let svg = Filename.concat p.tc.builddir "graph.svg" in
   if fl.targets_only then
     let text = Dot.targets_only p in
-    if drawing () then draw ~png text else print_string text
+    if drawing () then draw ~svg text else print_string text
   else
     let b = Build.of_project p in
     let selected =
       match names with [] -> None | _ -> Some (Build.select b (select_targets p names))
     in
     let keep i = match selected with None -> true | Some s -> Hashtbl.mem s i in
-    if drawing () then draw ~png (Dot.render ?selected b)
+    if drawing () then draw ~svg (Dot.render ?selected b)
     else if fl.dot then print_string (Dot.render ?selected b)
     else begin
       banner p;
