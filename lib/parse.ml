@@ -6,7 +6,7 @@ let stmt_keywords =
   [ "project"; "set"; "append"; "option"; "include"; "subdir"; "if"; "check"; "pkg";
     "config_header"; "message" ]
 
-let block_kinds = [ "toolchain"; "lib"; "shared"; "bin"; "test"; "rule"; "install" ]
+let block_kinds = [ "toolchain"; "lib"; "shared"; "bin"; "test"; "rule"; "install"; "run" ]
 let check_kinds = [ "header"; "func"; "symbol"; "sizeof"; "compiles" ]
 
 let peek p = p.toks.(p.pos)

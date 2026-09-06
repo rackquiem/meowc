@@ -7,6 +7,7 @@ let target_fields =
 
 let rule_fields = [ "inputs"; "outputs"; "command"; "description" ]
 let install_fields = [ "files"; "to" ]
+let script_fields = [ "use"; "command" ]
 
 let fields_of (b : block) =
   List.filter_map (function FField f -> Some f | FIf _ -> None) b.items
@@ -156,6 +157,20 @@ let installs_of blocks =
       end)
     blocks
 
+let scripts_of blocks =
+  List.concat_map
+    (fun ((b : block), _) ->
+      if b.kind <> "run" then []
+      else begin
+        check_fields b script_fields;
+        let cmd = texts (get b "command") in
+        if cmd = [] then
+          Diag.error ~span:b.nspan ~hint:"add a line like: command ./tool --flag"
+            "run %s declares no command" b.bname;
+        [ { sname = b.bname; suses = texts (get b "use"); scmd = cmd; sspan = b.nspan } ]
+      end)
+    blocks
+
 let project (env : Eval.env) =
   let blocks = env.blocks in
   let rules = rules_of blocks in
@@ -168,7 +183,8 @@ let project (env : Eval.env) =
   in
   List.iter
     (fun (b : block) ->
-      if not (List.mem b.kind [ "lib"; "shared"; "bin"; "test"; "rule"; "install"; "toolchain" ]) then
+      if not (List.mem b.kind [ "lib"; "shared"; "bin"; "test"; "rule"; "install"; "toolchain"; "run" ])
+      then
         Diag.error ~span:b.kspan "unknown block %S" b.kind)
     (List.map fst blocks);
   let seen = Hashtbl.create 8 in
@@ -186,6 +202,7 @@ let project (env : Eval.env) =
       tc = env.tc;
       targets;
       rules;
+      scripts = scripts_of blocks;
       defines = env.defines;
       config_header = env.config_header;
       installs = installs_of blocks;
@@ -208,6 +225,28 @@ let project (env : Eval.env) =
           | Some _ -> ())
         t.uses)
     targets;
+  let seen_runs = Hashtbl.create 4 in
+  List.iter
+    (fun (s : script) ->
+      (match Hashtbl.find_opt seen_runs s.sname with
+      | Some (prev : script) ->
+          Diag.error ~span:s.sspan ~notes:[ (prev.sspan, "first declared here") ]
+            "run %S is declared twice" s.sname
+      | None -> Hashtbl.add seen_runs s.sname s);
+      (* meowc run takes one name, so a run block and a target cannot share one *)
+      (match find p s.sname with
+      | Some (t : target) ->
+          Diag.error ~span:s.sspan ~notes:[ (t.span, "the target is here") ]
+            "run %S has the same name as a target" s.sname
+      | None -> ());
+      List.iter
+        (fun u ->
+          if find p u = None then
+            Diag.error ~span:s.sspan
+              ~hint:(Suggest.hint u (List.map (fun (x : target) -> x.name) targets))
+              "run %s uses %S, which is not a target" s.sname u)
+        s.suses)
+    p.scripts;
   let rec cyc seen t =
     if List.mem t.name seen then
       Diag.error ~span:t.span "dependency cycle: %s" (String.concat " -> " (List.rev (t.name :: seen)));

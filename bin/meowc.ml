@@ -8,7 +8,7 @@ let usage =
       "";
       Style.bold "  usage";
       "    meowc [build] [target...]     build everything, or the named targets";
-      "    meowc run <bin> [args...]     build a bin target, then run it";
+      "    meowc run <name> [args...]    run a bin target, or a run block";
       "    meowc test [filter]           build and run test targets";
       "    meowc install                 copy installable outputs under the prefix";
       "    meowc configure               run the checks and write the config header";
@@ -259,24 +259,46 @@ let cmd_build names =
   summarise r (Unix.gettimeofday () -. t0);
   p
 
+let runnable_names p =
+  List.filter_map (fun (t : target) -> if t.kind = Bin then Some t.name else None) p.targets
+  @ List.map (fun (s : script) -> s.sname) p.scripts
+
+let hand_over cmd =
+  flush stdout;
+  try Unix.execvp cmd.(0) cmd
+  with Unix.Unix_error (e, _, _) -> Diag.error "cannot run %s: %s" cmd.(0) (Unix.error_message e)
+
 let cmd_run = function
-  | [] -> Diag.error ~hint:"try: meowc run <bin>" "run needs a target name"
-  | name :: args ->
+  | [] -> Diag.error ~hint:"try: meowc run <bin>" "run needs a name"
+  | name :: args -> (
       let p = configure () in
-      let t = match find p name with
-        | Some ({ kind = Bin; _ } as t) -> t
-        | Some t -> Diag.error "%s is a %s, not a bin" name (kind_name t.kind)
-        | None -> unknown_target p name
+      let build_first names =
+        banner p;
+        with_config_header p;
+        let t0 = Unix.gettimeofday () in
+        let _, r = execute p ~names in
+        summarise r (Unix.gettimeofday () -. t0)
       in
-      banner p;
-      with_config_header p;
-      let t0 = Unix.gettimeofday () in
-      let _, r = execute p ~names:[ name ] in
-      summarise r (Unix.gettimeofday () -. t0);
-      let exe = Build.bin_of p t in
-      if not fl.quiet then Printf.printf "\n  %s\n" (Style.dim exe);
-      flush stdout;
-      Unix.execv exe (Array.of_list (exe :: args))
+      match List.find_opt (fun (s : script) -> s.sname = name) p.scripts with
+      | Some s ->
+          (* no names means everything, the same as a bare meowc build *)
+          build_first s.suses;
+          let cmd = Array.of_list (s.scmd @ args) in
+          if not fl.quiet then Printf.printf "\n  %s\n" (Style.dim (Exec.show cmd));
+          hand_over cmd
+      | None ->
+          let t =
+            match find p name with
+            | Some ({ kind = Bin; _ } as t) -> t
+            | Some t -> Diag.error "%s is a %s, not a bin" name (kind_name t.kind)
+            | None ->
+                Diag.error ~hint:(Suggest.hint name (runnable_names p))
+                  "no bin target or run block named %S" name
+          in
+          build_first [ name ];
+          let exe = Build.bin_of p t in
+          if not fl.quiet then Printf.printf "\n  %s\n" (Style.dim exe);
+          hand_over (Array.of_list (exe :: args)))
 
 let cmd_test filter =
   let p = configure () in
@@ -344,7 +366,18 @@ let cmd_targets () =
         (Style.pad 20 (Style.dim (Style.plural (List.length (all_srcs t)) "source")))
         (Style.dim (if t.uses = [] then "" else "uses " ^ String.concat " " t.uses)))
     p.targets;
-  Printf.printf "\n  %s\n" (Style.dim (Style.plural (List.length p.targets) "target"))
+  List.iter
+    (fun (s : script) ->
+      Printf.printf "  %s%s%s\n"
+        (Style.yellow (Style.pad 9 "run"))
+        (Style.pad 22 s.sname)
+        (Style.dim (if s.suses = [] then "" else "uses " ^ String.concat " " s.suses)))
+    p.scripts;
+  Printf.printf "\n  %s\n"
+    (Style.dim
+       (String.concat ", "
+          (Style.plural (List.length p.targets) "target"
+          :: (if p.scripts = [] then [] else [ Style.plural (List.length p.scripts) "run block" ]))))
 
 let cmd_graph () =
   let p = configure () in

@@ -46,6 +46,10 @@ type toolchain = {
   builddir : string;
 }
 
+(* A command the project can be asked to run, once whatever it names has been
+   built. Unlike a rule it produces no file, so it is never part of the graph. *)
+type script = { sname : string; suses : string list; scmd : string list; sspan : Span.t }
+
 type install_item = { from : string; dest : string }
 
 type define = { dname : string; dvalue : string option }
@@ -55,6 +59,7 @@ type project = {
   tc : toolchain;
   targets : target list;
   rules : rule list;
+  scripts : script list;
   defines : define list;
   config_header : string option;
   installs : install_item list;

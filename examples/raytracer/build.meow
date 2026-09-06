@@ -113,6 +113,13 @@ bin rtbench {
   use     rtscene
 }
 
+# A canned invocation, for a quick low sample preview. ${builddir} follows the
+# target triple, so this still points at the right binary under --target.
+run preview {
+  use     render
+  command ${builddir}/bin/render --scene rings --width 320 --height 180 --samples 8
+}
+
 test math_test {
   srcs    tests/math_test.c
   include include

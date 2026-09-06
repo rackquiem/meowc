@@ -13,6 +13,22 @@ dune build && ln -sf _build/default/bin/meowc.exe meowc
 cd examples/raytracer && ../../meowc build && ../../meowc test
 ```
 
+A `run` block names a command and the targets it needs, which is how a project
+drives something meowc does not build itself. `meowc run demo` builds those
+targets and hands over, appending any arguments you pass after the name; with no
+`use` it builds everything, as a bare `meowc build` does
+
+```
+run demo {
+  use     help
+  command guile --no-auto-compile main.scm
+}
+```
+
+Rules stay for files. A rule runs because something needs the file it writes, a
+run block runs because you asked for it, so a command that produces nothing has
+somewhere to live
+
 Cross compilation is driven by a target triple. Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is
 invoked with `--target`. Each triple gets its own build directory and probe
