@@ -14,7 +14,8 @@ let usage =
       "    meowc configure               run the checks and write the config header";
       "    meowc check                   parse and validate, build nothing";
       "    meowc targets                 list every target";
-      "    meowc graph [target...]       show the dependency graph, --dot for graphviz";
+      "    meowc graph [target...]       show the dependency graph";
+      "                                  --show draws it, --dot writes graphviz";
       "    meowc explain <file>          say why a file is or is not up to date";
       "    meowc compdb                  write compile_commands.json";
       "    meowc watch [target...]       rebuild whenever an input changes";
@@ -73,6 +74,7 @@ type flags = {
   mutable verbose : bool;
   mutable quiet : bool;
   mutable dot : bool;
+  mutable show : bool;
   mutable targets_only : bool;
   mutable interval : float;
   mutable target : string;
@@ -81,7 +83,7 @@ type flags = {
 
 let fl =
   { file = "build.meow"; jobs = 0; chdir = ""; defs = []; prefix = None; keep = false;
-    dry = false; verbose = false; quiet = false; dot = false; targets_only = false;
+    dry = false; verbose = false; quiet = false; dot = false; show = false; targets_only = false;
     interval = 0.25; target = ""; sysroot = "" }
 
 let parse_args argv =
@@ -110,6 +112,7 @@ let parse_args argv =
     | "--sysroot" :: v :: r -> fl.sysroot <- v; go r
     | "--interval" :: v :: r -> fl.interval <- (try float_of_string v with _ -> 0.25); go r
     | "--dot" :: r -> fl.dot <- true; go r
+    | "--show" :: r -> fl.show <- true; go r
     | "--targets" :: r -> fl.targets_only <- true; go r
     | "-k" :: r -> fl.keep <- true; go r
     | "-n" :: r -> fl.dry <- true; go r
@@ -378,16 +381,47 @@ let cmd_targets () =
           (Style.plural (List.length p.targets) "target"
           :: (if p.scripts = [] then [] else [ Style.plural (List.length p.scripts) "run block" ]))))
 
+(* In kitty a picture is cheaper to read than the source of one, so render it and
+   hand it to the terminal rather than leaving a file for a second program. *)
+let in_kitty () =
+  Sys.getenv_opt "KITTY_WINDOW_ID" <> None && Unix.isatty Unix.stdout && Exec.which "kitty"
+
+let draw dot =
+  if not (Exec.which "dot") then
+    Diag.error ~hint:"install graphviz" "dot is not on the path, so there is nothing to draw with";
+  let src = Filename.temp_file "meowc-graph" ".dot" in
+  let png = Filename.temp_file "meowc-graph" ".png" in
+  Fs.write src dot;
+  let rendered = Exec.ok [| "dot"; "-Tpng"; "-o"; png; src |] in
+  (try Sys.remove src with Sys_error _ -> ());
+  if not rendered then Diag.error "dot could not render the graph";
+  if in_kitty () then begin
+    flush stdout;
+    let cmd = [| "kitty"; "+kitten"; "icat"; png |] in
+    (match Unix.create_process cmd.(0) cmd Unix.stdin Unix.stdout Unix.stderr with
+    | pid -> ignore (Unix.waitpid [] pid)
+    | exception Unix.Unix_error (e, _, _) ->
+        Diag.error "cannot run kitty: %s" (Unix.error_message e));
+    (try Sys.remove png with Sys_error _ -> ())
+  end
+  else Printf.printf "  %s %s\n" (Style.dim "wrote") png
+
+(* Raw graphviz on a terminal is for nobody, so draw it there instead *)
+let drawing () = fl.show || (fl.dot && in_kitty ())
+
 let cmd_graph names =
   let p = configure () in
-  if fl.targets_only then print_string (Dot.targets_only p)
+  if fl.targets_only then
+    let text = Dot.targets_only p in
+    if drawing () then draw text else print_string text
   else
     let b = Build.of_project p in
     let selected =
       match names with [] -> None | _ -> Some (Build.select b (select_targets p names))
     in
     let keep i = match selected with None -> true | Some s -> Hashtbl.mem s i in
-    if fl.dot then print_string (Dot.render ?selected b)
+    if drawing () then draw (Dot.render ?selected b)
+    else if fl.dot then print_string (Dot.render ?selected b)
     else begin
       banner p;
       let order = Graph.topo b.g in

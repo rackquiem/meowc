@@ -46,6 +46,12 @@ rule tables {
 }
 ```
 
+`meowc graph --show` renders the graph and draws it in the terminal, so looking
+at one costs nothing but the command. In kitty `--dot` on a terminal does the
+same, since raw graphviz on a screen is for nobody, while a pipe or a redirect
+still writes the source. Without kitty the picture is written to a file and the
+path printed
+
 Tools are taken from the triple
 prefix when a matching toolchain is installed, otherwise the host compiler is
 invoked with `--target`. Each triple gets its own build directory and probe
