@@ -51,6 +51,13 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
   in
   let spawn (v : Graph.node) =
     List.iter (fun o -> Fs.mkdir_p (Filename.dirname o)) v.outs;
+    (* The node keeps the command it means, which is what the cache key and
+       every report are built from, and only the spawn goes through @file. *)
+    let argv =
+      match v.rsp with
+      | Some path when Exec.too_long v.cmd -> Exec.response path v.cmd
+      | _ -> v.cmd
+    in
     let tmp = Filename.temp_file "meowc" ".log" in
     let fd = Unix.openfile tmp [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ] 0o600 in
     let nul = Exec.devnull () in
@@ -65,7 +72,7 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
              Unix.dup2 fd Unix.stderr;
              Unix.close fd;
              Unix.close nul;
-             Unix.execvp v.cmd.(0) v.cmd
+             Unix.execvp argv.(0) argv
            with _ -> ());
           Unix._exit 127
       | pid -> pid

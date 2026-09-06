@@ -30,8 +30,14 @@ and `-Wl,-install_name`, and COFF drops both the position independent code flag
 and the soname, writing `rt.dll` next to the `librt.dll.a` that dependents link
 against
 
+`execve` weighs the arguments and the environment together against `ARG_MAX`, so
+past a few thousand objects a link or archive step stops being able to start at
+all. Commands meowc composes itself spill into a response file when they approach
+that limit and run as `@file`, while the graph keeps the command it meant, so a
+flag that only the response file ever sees still invalidates the action. A rule
+runs an arbitrary program, which need not understand `@file`, and is left alone
+
 ## TODO
 
-- Emit response files when command lines approach the platform argument length limit
 - Integrate precompiled headers into dependency tracking and invalidation
 - Replace periodic mtime polling in `watch` with filesystem event notifications such as `inotify`

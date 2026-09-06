@@ -8,13 +8,17 @@ type node = {
   depfile : string option;
   ords : string list;
   pool : string;
+  (* where to spill the arguments when the command line will not fit; only set
+     for commands meowc composes itself, since an arbitrary program from a rule
+     need not understand @file *)
+  rsp : string option;
   mutable deps : int list;
 }
 
 type t = { nodes : node array; by_output : (string, int) Hashtbl.t }
 
-let make ~id ~tag ~label ~cmd ~outs ~ins ?depfile ?(ords = []) ?(pool = "default") () =
-  { id; tag; label; cmd; outs; ins; depfile; ords; pool; deps = [] }
+let make ~id ~tag ~label ~cmd ~outs ~ins ?depfile ?(ords = []) ?(pool = "default") ?rsp () =
+  { id; tag; label; cmd; outs; ins; depfile; ords; pool; rsp; deps = [] }
 
 let build specs =
   let nodes = Array.of_list specs in

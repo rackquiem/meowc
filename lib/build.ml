@@ -123,7 +123,7 @@ let of_project p =
             let tag = if lang_of src = Cxx then "c++" else "cc" in
             add
               (Graph.make ~id:!n ~tag ~label:src ~cmd ~outs:[ obj ] ~ins:[ src ]
-                 ~depfile:(obj ^ ".d") ~ords:gen_headers ());
+                 ~depfile:(obj ^ ".d") ~ords:gen_headers ~rsp:(obj ^ ".rsp") ());
             obj)
           (all_srcs t)
       in
@@ -132,7 +132,8 @@ let of_project p =
       let ins = objs @ List.map (fun (d : target) -> out_of p d) (deps_of p t) in
       let label = match t.kind with Lib | Shared -> Filename.basename out | _ -> t.name in
       let outs = out :: Option.to_list (implib_of p t) in
-      add (Graph.make ~id:!n ~tag ~label ~cmd:(link_cmd p t objs) ~outs ~ins ());
+      add
+        (Graph.make ~id:!n ~tag ~label ~cmd:(link_cmd p t objs) ~outs ~ins ~rsp:(out ^ ".rsp") ());
       Hashtbl.replace outputs t.name (!n - 1))
     p.targets;
   { g = Graph.build (List.rev !nodes); outputs; p }
