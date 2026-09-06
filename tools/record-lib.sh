@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 FONT=${FONT:-JetBrainsMono Nerd Font Mono}
 FPS=${FPS:-12}
+DELAY=${DELAY:-42}
 
 start_xvfb() {
     local geometry=$1
@@ -41,10 +42,32 @@ stop_capture() {
 
 send_line() {
     local text=$1 pause=${2:-0.9}
-    xdotool type --delay 42 -- "$text"
+    xdotool type --delay "$DELAY" -- "$text"
     sleep 0.35
     xdotool key Return
     sleep "$pause"
+}
+
+# Fixed sleeps race a build that takes longer than expected, and the keystrokes
+# land in the middle of its output. PROMPT_COMMAND appends a byte every time the
+# shell draws a prompt, so the recorder can wait for the command to actually end.
+wait_prompt() {
+    local before=$1 limit=${2:-600}
+    for _ in $(seq "$limit"); do
+        [ "$(wc -c <"$PROMPT_FILE" 2>/dev/null || echo 0)" != "$before" ] && return 0
+        sleep 0.1
+    done
+}
+
+run_line() {
+    local text=$1 settle=${2:-0.8}
+    local before
+    before=$(wc -c <"$PROMPT_FILE" 2>/dev/null || echo 0)
+    xdotool type --delay "$DELAY" -- "$text"
+    sleep 0.35
+    xdotool key Return
+    wait_prompt "$before"
+    sleep "$settle"
 }
 
 to_gif() {

@@ -5,6 +5,7 @@ GEOMETRY=${GEOMETRY:-1280x720}
 LUA=${LUA:-$HOME/projects/lua}
 OUT="$ROOT/assets/showcase.mp4"
 WORK=$(mktemp -d)
+PROMPT_FILE="$WORK/prompt"
 
 cp -a "$LUA" "$WORK/lua"
 rm -rf "$WORK/lua/build"
@@ -28,22 +29,22 @@ for _ in $(seq 30); do
     sleep 1
 done
 xdotool search --onlyvisible --class kitty windowactivate >/dev/null 2>&1 || true
-xdotool type --delay 10 -- 'export PS1="lua-5.4.7 $ " WINEDEBUG=-all LIBGL_ALWAYS_SOFTWARE=1 MESA_DEBUG=silent PATH='"$WORK"'/bin:$PATH; clear'
+xdotool type --delay 10 -- 'export PS1="lua-5.4.7 $ " PROMPT_COMMAND="printf . >> '"$PROMPT_FILE"'" PATH='"$WORK"'/bin:$PATH; clear'
 xdotool key Return
 sleep 1
 
 start_capture "$GEOMETRY" "$WORK/showcase.mkv"
 
-send_line 'meowc build' 8.5
-send_line './build/bin/lua -v' 1.8
-send_line 'meowc --target x86_64-w64-mingw32 build' 13
-send_line 'file build/x86_64-w64-mingw32/bin/lua.exe' 2.2
-send_line 'wine build/x86_64-w64-mingw32/bin/lua.exe -v' 3.2
+run_line 'meowc build' 1.6
+run_line 'touch src/*.c src/*.h' 0.6
+run_line 'meowc build' 1.8
+run_line 'echo "int lua_added_decl (lua_State *L);" >> src/lua.h' 0.6
+run_line 'meowc build' 2.5
 
 stop_capture
 
 # Fit the cut to the target length rather than truncating the ending off it
-LIMIT=${LIMIT:-29.5}
+LIMIT=${LIMIT:-45}
 raw=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$WORK/showcase.mkv")
 speed=$(python3 -c "print(max(1.0, $raw / $LIMIT))")
 ffmpeg -v error -y -i "$WORK/showcase.mkv" -an -vf "setpts=PTS/$speed" \
