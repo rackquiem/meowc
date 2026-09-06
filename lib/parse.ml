@@ -14,11 +14,6 @@ let kind p = (peek p).Lexer.kind
 let span p = (peek p).Lexer.span
 let advance p = if p.pos < Array.length p.toks - 1 then p.pos <- p.pos + 1
 
-let bump p =
-  let t = peek p in
-  advance p;
-  t
-
 let rec skip_nl p = match kind p with Lexer.Newline -> advance p; skip_nl p | _ -> ()
 
 let expected p what =

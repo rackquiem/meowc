@@ -16,7 +16,6 @@ let make ?(severity = Error) ?(span = Span.none) ?hint ?(notes = []) msg =
 let error ?span ?hint ?notes fmt =
   Printf.ksprintf (fun msg -> raise (Stop [ make ?span ?hint ?notes msg ])) fmt
 
-let errorf fmt = Printf.ksprintf (fun msg -> make msg) fmt
 
 let sources : (string, string array) Hashtbl.t = Hashtbl.create 8
 

@@ -41,5 +41,3 @@ type stmt =
   | ConfigHeader of value
   | Message of value * value list
   | Blk of block
-
-let v text span = { text; span; quoted = false }

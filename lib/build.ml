@@ -89,11 +89,7 @@ let link_cmd p (t : target) objs =
   | Bin | Test ->
       Array.of_list (((driver :: objs) @ [ "-o"; out ]) @ link_libs p t @ t.ldflags @ p.tc.ldflags @ p.tc.xflags)
 
-let tag_of = function
-  | Lib -> ("ar", Style.magenta)
-  | Shared -> ("so", Style.cyan)
-  | Bin -> ("ld", Style.green)
-  | Test -> ("ld", Style.green)
+let tag_of = function Lib -> "ar" | Shared -> "so" | Bin | Test -> "ld"
 
 let is_header f =
   List.mem (String.lowercase_ascii (Filename.extension f)) [ ".h"; ".hh"; ".hpp"; ".hxx"; ".inc" ]
@@ -128,7 +124,7 @@ let of_project p =
           (all_srcs t)
       in
       let out = out_of p t in
-      let tag, _ = tag_of t.kind in
+      let tag = tag_of t.kind in
       let ins = objs @ List.map (fun (d : target) -> out_of p d) (deps_of p t) in
       let label = match t.kind with Lib | Shared -> Filename.basename out | _ -> t.name in
       let outs = out :: Option.to_list (implib_of p t) in

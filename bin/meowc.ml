@@ -358,10 +358,8 @@ let cmd_targets () =
   banner p;
   List.iter
     (fun (t : target) ->
-      let tag, paint = Build.tag_of t.kind in
-      ignore tag;
       Printf.printf "  %s%s%s%s\n"
-        (paint (Style.pad 9 (kind_name t.kind)))
+        (Build.paint (Build.tag_of t.kind) (Style.pad 9 (kind_name t.kind)))
         (Style.pad 22 t.name)
         (Style.pad 20 (Style.dim (Style.plural (List.length (all_srcs t)) "source")))
         (Style.dim (if t.uses = [] then "" else "uses " ^ String.concat " " t.uses)))

@@ -25,7 +25,6 @@ let visible s =
 let pad n s = s ^ String.make (max 0 (n - visible s)) ' '
 
 let pad_left n s = String.make (max 0 (n - visible s)) ' ' ^ s
-let ellipsis n s = if visible s <= n then s else String.sub s 0 (max 0 (n - 1)) ^ "\xe2\x80\xa6"
 let plural n w =
   let last = if w = "" then ' ' else w.[String.length w - 1] in
   let prev = if String.length w < 2 then ' ' else w.[String.length w - 2] in

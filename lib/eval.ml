@@ -81,7 +81,6 @@ let default_tc : Types.toolchain =
     cc = "cc";
     cxx = "c++";
     ar = "ar";
-    ranlib = "ranlib";
     target = "";
     sysroot = "";
     xflags = [];
@@ -119,7 +118,6 @@ let derive_cross env explicit =
         cc = (if set "cc" then tc.cc else pick "gcc" "cc");
         cxx = (if set "cxx" then tc.cxx else pick "g++" "c++");
         ar = (if set "ar" then tc.ar else prefixed "ar");
-        ranlib = (if set "ranlib" then tc.ranlib else prefixed "ranlib");
       }
   in
   let xflags =
@@ -245,11 +243,6 @@ let show_probe env label result detail =
 
 let define env name value = env.defines <- env.defines @ [ { Types.dname = name; dvalue = value } ]
 
-let record env ~label ~var ~macro (o : Probe.outcome) ~detail =
-  setvar env var [ (if o.ok then "true" else "false") ];
-  define env macro (if o.ok then Some "1" else None);
-  if env.probe.Probe.ran > 0 then show_probe env label o.ok detail
-
 let run_check env (c : check) =
   let before = env.probe.Probe.ran in
   let fresh () = env.probe.Probe.ran > before in
@@ -335,7 +328,6 @@ let apply_toolchain env fields =
         | "cc" -> { tc with cc = one () }
         | "cxx" -> { tc with cxx = one () }
         | "ar" -> { tc with ar = one () }
-        | "ranlib" -> { tc with ranlib = one () }
         | "cflags" -> { tc with cflags = tc.cflags @ vs }
         | "cxxflags" -> { tc with cxxflags = tc.cxxflags @ vs }
         | "ldflags" -> { tc with ldflags = tc.ldflags @ vs }
@@ -346,8 +338,8 @@ let apply_toolchain env fields =
             Diag.error ~span:f.kspan
               ~hint:
                 (Suggest.hint k
-                   [ "cc"; "cxx"; "ar"; "ranlib"; "cflags"; "cxxflags"; "ldflags"; "builddir";
-                     "target"; "sysroot" ])
+                   [ "cc"; "cxx"; "ar"; "cflags"; "cxxflags"; "ldflags"; "builddir"; "target";
+                     "sysroot" ])
               "toolchain has no field %S" k))
     fields;
   if env.tc.target <> "" then derive_cross env explicit;

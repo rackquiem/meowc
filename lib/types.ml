@@ -7,7 +7,6 @@ let kind_name = function Lib -> "lib" | Shared -> "shared" | Bin -> "bin" | Test
 type target = {
   name : string;
   kind : tkind;
-  dir : string;
   srcs : string list;
   gen_srcs : string list;
   includes : string list;
@@ -16,7 +15,6 @@ type target = {
   cxxflags : string list;
   ldflags : string list;
   defines : string list;
-  pkgs : string list;
   install : string option;
   soname : string option;
   args : string list;
@@ -36,7 +34,6 @@ type toolchain = {
   cc : string;
   cxx : string;
   ar : string;
-  ranlib : string;
   target : string;
   sysroot : string;
   xflags : string list;

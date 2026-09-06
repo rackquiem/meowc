@@ -107,7 +107,6 @@ let target_of pkgs ((b : block), base) =
   {
     name = b.bname;
     kind;
-    dir = base;
     srcs = [];
     gen_srcs = [];
     includes = List.map (Eval.under base) (texts (get b "include"));
@@ -116,7 +115,6 @@ let target_of pkgs ((b : block), base) =
     cxxflags = texts (get b "cxxflags") @ pkg_cflags;
     ldflags = texts (get b "ldflags") @ pkg_libs;
     defines = texts (get b "define");
-    pkgs = pkg_names;
     install = get1 b "install";
     soname = get1 b "soname";
     args = texts (get b "args");
