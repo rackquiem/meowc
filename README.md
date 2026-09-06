@@ -15,4 +15,3 @@ cd examples/raytracer && ../../meowc build && ../../meowc test
 - Emit response files when command lines approach the platform argument length limit
 - Integrate precompiled headers into dependency tracking and invalidation
 - Replace periodic mtime polling in `watch` with filesystem event notifications such as `inotify`
-- Propagate build failures through the scheduler and cancel in flight work rather than preventing new actions from starting

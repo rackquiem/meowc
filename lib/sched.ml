@@ -1,4 +1,4 @@
-type result = { built : int; cached : int; failed : int }
+type result = { built : int; cached : int; failed : int; aborted : int }
 
 type state = Blocked | Ready | Running | Done | Failed
 
@@ -32,7 +32,8 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
   let ready = Queue.create () in
   Array.iter (fun (v : Graph.node) -> if wanted v.id && pending.(v.id) = 0 then Queue.add v.id ready) nodes;
   let running = Hashtbl.create 8 in
-  let built = ref 0 and cached = ref 0 and failed = ref 0 in
+  let cancelled = Hashtbl.create 8 in
+  let built = ref 0 and cached = ref 0 and failed = ref 0 and aborted_count = ref 0 in
   let stopping () = !failed > 0 && not keep_going in
   let release i =
     List.iter
@@ -66,12 +67,27 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
     on_start v;
     Hashtbl.replace running pid (v, tmp)
   in
+  let cancel_running () =
+    Hashtbl.iter
+      (fun pid _ ->
+        Hashtbl.replace cancelled pid ();
+        try Unix.kill pid Sys.sigterm with Unix.Unix_error _ -> ())
+      running
+  in
+  let discard (v : Graph.node) =
+    List.iter Cache.forget v.outs;
+    Cache.drop cache (List.hd v.outs);
+    List.iter (fun o -> try Sys.remove o with Sys_error _ -> ()) v.outs;
+    skip v.id
+  in
   let reap () =
     let pid, status = Unix.wait () in
     match Hashtbl.find_opt running pid with
     | None -> ()
     | Some (v, tmp) ->
         Hashtbl.remove running pid;
+        let aborted = Hashtbl.mem cancelled pid in
+        Hashtbl.remove cancelled pid;
         let ok = status = Unix.WEXITED 0 in
         let log = try Fs.read tmp with Sys_error _ -> "" in
         (try Sys.remove tmp with Sys_error _ -> ());
@@ -81,17 +97,21 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
           List.iter Cache.forget v.outs;
           (match v.depfile with Some d -> Cache.forget d | None -> ());
           Cache.put cache (List.hd v.outs) (key_of v);
-          release v.id
+          release v.id;
+          on_done ~ok ~log v;
+          if verbose then print_endline ("      " ^ Style.dim (Exec.show v.cmd))
+        end
+        else if aborted then begin
+          incr aborted_count;
+          discard v
         end
         else begin
           incr failed;
-          List.iter Cache.forget v.outs;
-          Cache.drop cache (List.hd v.outs);
-          List.iter (fun o -> try Sys.remove o with Sys_error _ -> ()) v.outs;
-          skip v.id
-        end;
-        on_done ~ok ~log v;
-        if verbose then print_endline ("      " ^ Style.dim (Exec.show v.cmd))
+          discard v;
+          on_done ~ok ~log v;
+          if verbose then print_endline ("      " ^ Style.dim (Exec.show v.cmd));
+          if not keep_going then cancel_running ()
+        end
   in
   while (not (Queue.is_empty ready) && not (stopping ())) || Hashtbl.length running > 0 do
     while (not (Queue.is_empty ready)) && Hashtbl.length running < jobs && not (stopping ()) do
@@ -107,4 +127,4 @@ let run g ~selected ~jobs ~cache ~verbose ~keep_going ~on_start ~on_done =
     if Hashtbl.length running > 0 then reap ()
     else if Queue.is_empty ready then ()
   done;
-  { built = !built; cached = !cached; failed = !failed }
+  { built = !built; cached = !cached; failed = !failed; aborted = !aborted_count }
