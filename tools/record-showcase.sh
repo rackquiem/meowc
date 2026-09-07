@@ -2,13 +2,13 @@
 source "$(dirname "${BASH_SOURCE[0]}")/record-lib.sh"
 
 GEOMETRY=${GEOMETRY:-1280x720}
-LUA=${LUA:-$HOME/projects/lua}
+EXAMPLE="$ROOT/examples/raytracer"
 OUT="$ROOT/assets/showcase.mp4"
 WORK=$(mktemp -d)
 PROMPT_FILE="$WORK/prompt"
 
-cp -a "$LUA" "$WORK/lua"
-rm -rf "$WORK/lua/build"
+cp -a "$EXAMPLE" "$WORK/raytracer"
+rm -rf "$WORK/raytracer/build" "$WORK/raytracer/gen" "$WORK/raytracer/out"
 mkdir -p "$WORK/bin"
 ln -sf "$ROOT/meowc" "$WORK/bin/meowc"
 
@@ -20,7 +20,7 @@ kitty \
     -o "initial_window_width=${GEOMETRY%x*}" \
     -o "initial_window_height=${GEOMETRY#*x}" \
     -o confirm_os_window_close=0 \
-    --directory "$WORK/lua" \
+    --directory "$WORK/raytracer" \
     -- bash --noprofile --norc >/dev/null 2>&1 &
 sleep 3
 
@@ -29,21 +29,23 @@ for _ in $(seq 30); do
     sleep 1
 done
 xdotool search --onlyvisible --class kitty windowactivate >/dev/null 2>&1 || true
-xdotool type --delay 10 -- 'export PS1="lua-5.4.7 $ " PROMPT_COMMAND="printf . >> '"$PROMPT_FILE"'" PATH='"$WORK"'/bin:$PATH; clear'
+xdotool type --delay 10 -- 'export PS1="raytracer $ " PROMPT_COMMAND="printf . >> '"$PROMPT_FILE"'" PATH='"$WORK"'/bin:$PATH; clear'
 xdotool key Return
 sleep 1
 
 start_capture "$GEOMETRY" "$WORK/showcase.mkv"
 
+run_line 'meowc targets' 2.4
 run_line 'meowc build' 1.6
-run_line 'touch src/*.c src/*.h' 0.6
-run_line 'meowc build' 1.8
-run_line 'echo "int lua_added_decl (lua_State *L);" >> src/lua.h' 0.6
-run_line 'meowc build' 2.5
+run_line 'meowc test' 2.2
+run_line 'clear' 0.4
+run_line 'touch src/*/*.c include/*.h' 0.5
+run_line 'meowc build' 2.0
+run_line 'echo "void rt_scene_extra(void);" >> include/rt_scene.h' 0.5
+run_line 'meowc build' 2.6
 
 stop_capture
 
-# Fit the cut to the target length rather than truncating the ending off it
 LIMIT=${LIMIT:-45}
 raw=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$WORK/showcase.mkv")
 speed=$(python3 -c "print(max(1.0, $raw / $LIMIT))")
