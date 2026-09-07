@@ -36,6 +36,10 @@ let digest_file p =
 
 let forget p = Hashtbl.remove digests p
 
+(* The memo saves re-hashing a header that half the project includes, so it is
+   only ever valid for one build. A watch loop runs many in one process. *)
+let reset () = Hashtbl.reset digests
+
 let key ~cmd ~inputs =
   let b = Buffer.create 256 in
   Buffer.add_string b cmd;

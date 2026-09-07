@@ -535,6 +535,7 @@ let cmd_compdb () =
 
 let cmd_watch names =
   let round () =
+    Cache.reset ();
     let p = configure () in
     with_config_header p;
     let t0 = Unix.gettimeofday () in
